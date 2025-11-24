@@ -1,3 +1,13 @@
+/* Ocultar barra de búsqueda nativa de GLPI para evitar confusiones */
+form[role="search"][data-submit-once] input[name="globalsearch"] {
+    display: none !important;
+}
+
+/* Ocultar también el contenedor completo del formulario de búsqueda nativo */
+form[action*="front/search.php"][role="search"][data-submit-once] {
+    display: none !important;
+}
+
 /* Botón de búsqueda global en el header */
 .globalsearch-btn {
     flex-shrink: 0;
