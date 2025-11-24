@@ -1,0 +1,276 @@
+<div class="container-fluid">
+	<div class="row">
+		<div class="col-12">
+			<h2 class="mb-3">
+				{{ __('Global search results') }}: "{{ query }}"
+			</h2>
+
+			{# Tickets #}
+			{% if results.Ticket is defined and results.Ticket|length > 0 %}
+				<div class="card mb-3">
+					<div class="card-header">
+						<h3 class="card-title">{{ _n('Ticket', 'Tickets', 2) }}</h3>
+					</div>
+					<div class="table-responsive">
+						<table class="table table-hover card-table">
+							<thead>
+								<tr>
+									<th>{{ __('ID') }}</th>
+									<th>{{ __('Name') }}</th>
+									<th>{{ __('Status') }}</th>
+									<th>{{ __('Date') }}</th>
+								</tr>
+							</thead>
+							<tbody>
+								{% for t in results.Ticket %}
+									<tr>
+										<td>
+											<a href="{{ path('front/ticket.form.php') ~ '?id=' ~ t.id }}">
+												#{{ t.id }}
+											</a>
+										</td>
+										<td>{{ t.name }}</td>
+										<td>{{ t.status_name }}</td>
+										<td>{{ t.date }}</td>
+									</tr>
+								{% endfor %}
+							</tbody>
+						</table>
+					</div>
+				</div>
+			{% endif %}
+
+			{# Projects #}
+			{% if results.Project is defined and results.Project|length > 0 %}
+				<div class="card mb-3">
+					<div class="card-header">
+						<h3 class="card-title">{{ _n('Project', 'Projects', 2) }}</h3>
+					</div>
+					<div class="table-responsive">
+						<table class="table table-hover card-table">
+							<thead>
+								<tr>
+									<th>{{ __('ID') }}</th>
+									<th>{{ __('Name') }}</th>
+									<th>{{ __('Date') }}</th>
+								</tr>
+							</thead>
+							<tbody>
+								{% for p in results.Project %}
+									<tr>
+										<td>
+											<a href="{{ path('front/project.form.php') ~ '?id=' ~ p.id }}">
+												#{{ p.id }}
+											</a>
+										</td>
+										<td>{{ p.name }}</td>
+										<td>{{ p.plan_start_date ?: p.date }}</td>
+									</tr>
+								{% endfor %}
+							</tbody>
+						</table>
+					</div>
+				</div>
+			{% endif %}
+
+			{# Documents #}
+			{% if results.Document is defined and results.Document|length > 0 %}
+				<div class="card mb-3">
+					<div class="card-header">
+						<h3 class="card-title">{{ _n('Document', 'Documents', 2) }}</h3>
+					</div>
+					<div class="table-responsive">
+						<table class="table table-hover card-table">
+							<thead>
+								<tr>
+									<th>{{ __('ID') }}</th>
+									<th>{{ __('Name') }}</th>
+									<th>{{ __('File') }}</th>
+									<th>{{ __('Date') }}</th>
+								</tr>
+							</thead>
+							<tbody>
+								{% for d in results.Document %}
+									<tr>
+										<td>
+											<a href="{{ path('front/document.form.php') ~ '?id=' ~ d.id }}">
+												#{{ d.id }}
+											</a>
+										</td>
+										<td>{{ d.name }}</td>
+										<td>{{ d.filename }}</td>
+										<td>{{ d.date_mod }}</td>
+									</tr>
+								{% endfor %}
+							</tbody>
+						</table>
+					</div>
+				</div>
+			{% endif %}
+
+			{# Software #}
+			{% if results.Software is defined and results.Software|length > 0 %}
+				<div class="card mb-3">
+					<div class="card-header">
+						<h3 class="card-title">{{ _n('Software', 'Software', 2) }}</h3>
+					</div>
+					<div class="table-responsive">
+						<table class="table table-hover card-table">
+							<thead>
+								<tr>
+									<th>{{ __('ID') }}</th>
+									<th>{{ __('Name') }}</th>
+									<th>{{ __('Last update') }}</th>
+								</tr>
+							</thead>
+							<tbody>
+								{% for s in results.Software %}
+									<tr>
+										<td>
+											<a href="{{ path('front/software.form.php') ~ '?id=' ~ s.id }}">
+												#{{ s.id }}
+											</a>
+										</td>
+										<td>{{ s.name }}</td>
+										<td>{{ s.date_mod }}</td>
+									</tr>
+								{% endfor %}
+							</tbody>
+						</table>
+					</div>
+				</div>
+			{% endif %}
+
+			{# Users #}
+			{% if results.User is defined and results.User|length > 0 %}
+				<div class="card mb-3">
+					<div class="card-header">
+						<h3 class="card-title">{{ _n('User', 'Users', 2) }}</h3>
+					</div>
+					<div class="table-responsive">
+						<table class="table table-hover card-table">
+							<thead>
+								<tr>
+									<th>{{ __('ID') }}</th>
+									<th>{{ __('Name') }}</th>
+									<th>{{ __('Login') }}</th>
+									<th>{{ __('Phone') }}</th>
+								</tr>
+							</thead>
+							<tbody>
+								{% for u in results.User %}
+									<tr>
+										<td>
+											<a href="{{ path('front/user.form.php') ~ '?id=' ~ u.id }}">
+												#{{ u.id }}
+											</a>
+										</td>
+										<td>{{ u.fullname }}</td>
+										<td>{{ u.name }}</td>
+										<td>{{ u.phone ?: u.mobile }}</td>
+									</tr>
+								{% endfor %}
+							</tbody>
+						</table>
+					</div>
+				</div>
+			{% endif %}
+
+			{# Ticket Tasks #}
+			{% if results.TicketTask is defined and results.TicketTask|length > 0 %}
+				<div class="card mb-3">
+					<div class="card-header">
+						<h3 class="card-title">{{ __('Ticket tasks') }}</h3>
+					</div>
+					<div class="table-responsive">
+						<table class="table table-hover card-table">
+							<thead>
+								<tr>
+									<th>{{ __('ID') }}</th>
+									<th>{{ __('Ticket') }}</th>
+									<th>{{ __('Content') }}</th>
+									<th>{{ __('Date') }}</th>
+								</tr>
+							</thead>
+							<tbody>
+								{% for tt in results.TicketTask %}
+									<tr>
+										<td>
+											<a href="{{ path('front/ticket.form.php') ~ '?id=' ~ tt.tickets_id }}">
+												#{{ tt.id }}
+											</a>
+										</td>
+										<td>
+											<a href="{{ path('front/ticket.form.php') ~ '?id=' ~ tt.tickets_id }}">
+												#{{ tt.tickets_id }}
+												-
+												{{ tt.ticket_name }}
+											</a>
+										</td>
+										<td>{{ tt.content|striptags|u.truncate(100, '...') }}</td>
+										<td>{{ tt.date }}</td>
+									</tr>
+								{% endfor %}
+							</tbody>
+						</table>
+					</div>
+				</div>
+			{% endif %}
+
+			{# Project Tasks #}
+			{% if results.ProjectTask is defined and results.ProjectTask|length > 0 %}
+				<div class="card mb-3">
+					<div class="card-header">
+						<h3 class="card-title">{{ __('Project tasks') }}</h3>
+					</div>
+					<div class="table-responsive">
+						<table class="table table-hover card-table">
+							<thead>
+								<tr>
+									<th>{{ __('ID') }}</th>
+									<th>{{ __('Name') }}</th>
+									<th>{{ __('Project') }}</th>
+									<th>{{ __('Date') }}</th>
+								</tr>
+							</thead>
+							<tbody>
+								{% for pt in results.ProjectTask %}
+									<tr>
+										<td>
+											<a href="{{ path('front/projecttask.form.php') ~ '?id=' ~ pt.id }}">
+												#{{ pt.id }}
+											</a>
+										</td>
+										<td>{{ pt.name }}</td>
+										<td>
+											<a href="{{ path('front/project.form.php') ~ '?id=' ~ pt.projects_id }}">
+												#{{ pt.projects_id }}
+											</a>
+										</td>
+										<td>{{ pt.plan_start_date ?: pt.date_mod }}</td>
+									</tr>
+								{% endfor %}
+							</tbody>
+						</table>
+					</div>
+				</div>
+			{% endif %}
+
+			{# No results message #}
+			{% set has_results = false %}
+			{% for key, items in results %}
+				{% if items|length > 0 %}
+					{% set has_results = true %}
+				{% endif %}
+			{% endfor %}
+
+			{% if not has_results %}
+				<div class="card">
+					<div class="card-body">
+						<p class="mb-0 text-muted">{{ __('No results found for this query.') }}</p>
+					</div>
+				</div>
+			{% endif %}
+		</div>
+	</div>
+</div>

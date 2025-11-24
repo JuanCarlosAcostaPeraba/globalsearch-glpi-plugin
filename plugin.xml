@@ -1,0 +1,31 @@
+<root>
+   <name>Global Search Enhancer</name>
+   <key>globalsearch</key>
+   <state>stable</state>
+
+   <version>1.1.0</version>
+   <author>Juan Carlos Acosta Perabá</author>
+   <homepage>https://github.com/JuanCarlosAcostaPeraba</homepage>
+   <license>GPLv3+</license>
+
+   <compatibility>
+      <glpi min="10.0.0" max="10.0.99" />
+   </compatibility>
+
+   <description>
+      <short>
+         <en>Custom global search engine for GLPI.</en>
+         <es_ES>Motor de búsqueda global personalizado para GLPI.</es_ES>
+      </short>
+      <long>
+         <en>
+            Replaces GLPI default global search with a custom engine that queries the database directly,
+            including closed tickets and resolved projects, with full control over filters and ranking.
+         </en>
+         <es_ES>
+            Sustituye la búsqueda global por defecto de GLPI por un motor propio que consulta la base de datos
+            directamente, incluyendo tickets cerrados y proyectos resueltos, con control total sobre filtros y ordenación.
+         </es_ES>
+      </long>
+   </description>
+</root>

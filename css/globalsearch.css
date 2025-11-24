@@ -1,0 +1,50 @@
+/* Botón de búsqueda global en el header */
+.globalsearch-btn {
+    flex-shrink: 0;
+}
+
+/* Modal de búsqueda */
+.globalsearch-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+}
+
+.globalsearch-modal.d-none {
+    display: none !important;
+}
+
+.globalsearch-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(2px);
+}
+
+.globalsearch-dialog {
+    position: absolute;
+    max-width: 600px;
+    width: 90%;
+    top: 10%;
+    left: 50%;
+    transform: translateX(-50%);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
+    z-index: 10000;
+}
+
+/* Animación suave al abrir */
+.globalsearch-modal:not(.d-none) .globalsearch-dialog {
+    animation: slideDown 0.2s ease-out;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(-20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+}
