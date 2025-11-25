@@ -25,6 +25,52 @@ class PluginGlobalsearchSearchEngine
     }
 
     /**
+     * Obtiene el nombre del técnico asignado a un ticket
+     * Los técnicos se guardan en glpi_tickets_users con type = 2 (assigned)
+     *
+     * @param int $ticket_id ID del ticket
+     * @return string Nombre del técnico o "Sin asignar"
+     */
+    private function getTechnicianName($ticket_id)
+    {
+        global $DB;
+
+        // Buscar técnico asignado (type = 2 significa "assigned")
+        $criteria = [
+            'SELECT' => [
+                'glpi_users.firstname',
+                'glpi_users.realname'
+            ],
+            'FROM'   => 'glpi_tickets_users',
+            'INNER JOIN' => [
+                'glpi_users' => [
+                    'ON' => [
+                        'glpi_tickets_users' => 'users_id',
+                        'glpi_users'         => 'id'
+                    ]
+                ]
+            ],
+            'WHERE'  => [
+                'glpi_tickets_users.tickets_id' => $ticket_id,
+                'glpi_tickets_users.type'       => 2  // 2 = Assigned technician
+            ],
+            'LIMIT'  => 1
+        ];
+
+        $iterator = $DB->request($criteria);
+
+        if (count($iterator)) {
+            $row = $iterator->current();
+            $firstname = $row['firstname'] ?? '';
+            $realname = $row['realname'] ?? '';
+            $fullname = trim($firstname . ' ' . $realname);
+            return $fullname ?: __('Unknown');
+        }
+
+        return __('Not assigned');
+    }
+
+    /**
      * Genera el criterio de búsqueda "estilo Google".
      * Divide la query en palabras y requiere que TODAS las palabras aparezcan
      * en al menos uno de los campos proporcionados.
@@ -68,15 +114,38 @@ class PluginGlobalsearchSearchEngine
      */
     public function searchAll()
     {
-        return [
-            'Ticket'       => $this->searchTickets(),
-            'Project'      => $this->searchProjects(),
-            'Document'     => $this->searchDocuments(),
-            'Software'     => $this->searchSoftware(),
-            'User'         => $this->searchUsers(),
-            'TicketTask'   => $this->searchTicketTasks(),
-            'ProjectTask'  => $this->searchProjectTasks(),
-        ];
+        $results = [];
+
+        // Verificar configuración para cada tipo de búsqueda
+        if (PluginGlobalsearchConfig::isEnabled('Ticket')) {
+            $results['Ticket'] = $this->searchTickets();
+        }
+
+        if (PluginGlobalsearchConfig::isEnabled('Project')) {
+            $results['Project'] = $this->searchProjects();
+        }
+
+        if (PluginGlobalsearchConfig::isEnabled('Document')) {
+            $results['Document'] = $this->searchDocuments();
+        }
+
+        if (PluginGlobalsearchConfig::isEnabled('Software')) {
+            $results['Software'] = $this->searchSoftware();
+        }
+
+        if (PluginGlobalsearchConfig::isEnabled('User')) {
+            $results['User'] = $this->searchUsers();
+        }
+
+        if (PluginGlobalsearchConfig::isEnabled('TicketTask')) {
+            $results['TicketTask'] = $this->searchTicketTasks();
+        }
+
+        if (PluginGlobalsearchConfig::isEnabled('ProjectTask')) {
+            $results['ProjectTask'] = $this->searchProjectTasks();
+        }
+
+        return $results;
     }
 
     /**
@@ -94,19 +163,28 @@ class PluginGlobalsearchSearchEngine
             if (!Ticket::canView()) return [];
 
             $criteria = [
-                'SELECT' => ['id', 'name', 'status', 'entities_id', 'date', 'closedate', 'date_mod'],
+                'SELECT' => [
+                    'glpi_tickets.id',
+                    'glpi_tickets.name',
+                    'glpi_tickets.status',
+                    'glpi_tickets.entities_id',
+                    'glpi_tickets.date',
+                    'glpi_tickets.closedate',
+                    'glpi_tickets.date_mod'
+                ],
                 'FROM'   => 'glpi_tickets',
-                'WHERE'  => ['id' => $this->raw_query]
+                'WHERE'  => ['glpi_tickets.id' => $this->raw_query]
             ];
 
             if (!empty($this->allowed_entities)) {
-                $criteria['WHERE']['entities_id'] = $this->allowed_entities;
+                $criteria['WHERE']['glpi_tickets.entities_id'] = $this->allowed_entities;
             }
 
             $iterator = $DB->request($criteria);
             $results = [];
             foreach ($iterator as $row) {
                 $row['status_name'] = Ticket::getStatus($row['status']);
+                $row['tech_name'] = $this->getTechnicianName($row['id']);
                 $results[] = $row;
             }
             return $results;
@@ -121,26 +199,26 @@ class PluginGlobalsearchSearchEngine
         }
 
         // Campos donde buscar
-        $search_fields = ['name', 'content'];
+        $search_fields = ['glpi_tickets.name', 'glpi_tickets.content'];
 
         $criteria = [
             'SELECT' => [
-                'id',
-                'name',
-                'status',
-                'entities_id',
-                'date',
-                'closedate',
-                'date_mod'
+                'glpi_tickets.id',
+                'glpi_tickets.name',
+                'glpi_tickets.status',
+                'glpi_tickets.entities_id',
+                'glpi_tickets.date',
+                'glpi_tickets.closedate',
+                'glpi_tickets.date_mod'
             ],
             'FROM'   => 'glpi_tickets',
             'WHERE'  => $this->getMultiWordCriteria($search_fields),
-            'ORDER'  => 'date_mod DESC',
+            'ORDER'  => 'glpi_tickets.date_mod DESC',
             'LIMIT'  => (int)$limit
         ];
 
         if (!empty($this->allowed_entities)) {
-            $criteria['WHERE']['entities_id'] = $this->allowed_entities;
+            $criteria['WHERE']['glpi_tickets.entities_id'] = $this->allowed_entities;
         }
 
         $iterator = $DB->request($criteria);
@@ -148,6 +226,7 @@ class PluginGlobalsearchSearchEngine
 
         foreach ($iterator as $row) {
             $row['status_name'] = Ticket::getStatus($row['status']);
+            $row['tech_name'] = $this->getTechnicianName($row['id']);
             $results[] = $row;
         }
 

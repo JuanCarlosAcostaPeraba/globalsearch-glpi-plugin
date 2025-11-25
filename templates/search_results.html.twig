@@ -18,6 +18,7 @@
 									<th>{{ __('ID') }}</th>
 									<th>{{ __('Name') }}</th>
 									<th>{{ __('Status') }}</th>
+									<th>{{ __('Technician') }}</th>
 									<th>{{ __('Date') }}</th>
 								</tr>
 							</thead>
@@ -31,6 +32,7 @@
 										</td>
 										<td>{{ t.name }}</td>
 										<td>{{ t.status_name }}</td>
+										<td>{{ t.tech_name }}</td>
 										<td>{{ t.date }}</td>
 									</tr>
 								{% endfor %}

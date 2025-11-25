@@ -4,7 +4,7 @@ if (!defined('GLPI_ROOT')) {
     die('Direct access not allowed');
 }
 
-define('GLOBALSEARCH_VERSION', '1.2.0');
+define('GLOBALSEARCH_VERSION', '1.4.1');
 
 /**
  * Inicialización del plugin (GLPI la ejecuta al cargar el plugin)
@@ -26,6 +26,14 @@ function plugin_init_globalsearch()
 
     // Opcional: CSS propio para el modal
     $PLUGIN_HOOKS['add_css']['globalsearch'][] = 'css/globalsearch.css';
+
+    // Añadir enlace de configuración en el menú de Configuración > Plugins
+    if (Session::haveRight('config', UPDATE)) {
+        $PLUGIN_HOOKS['config_page']['globalsearch'] = 'front/config.form.php';
+    }
+
+    // Registrar la clase de configuración
+    Plugin::registerClass('PluginGlobalsearchConfig', ['addtabon' => 'Config']);
 }
 
 /**
