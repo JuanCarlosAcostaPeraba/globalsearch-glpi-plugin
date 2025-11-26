@@ -9,20 +9,118 @@ class PluginGlobalsearchSearchEngine
     /** @var string */
     private $raw_query;
 
-    /** @var array */
-    private $allowed_entities = [];
-
     /**
      * @param string $raw_query
      */
     public function __construct($raw_query)
     {
         $this->raw_query = trim($raw_query);
-        // Asegurar que es un array válido
-        $this->allowed_entities = (isset($_SESSION['glpiactiveentities']) && is_array($_SESSION['glpiactiveentities']))
-            ? $_SESSION['glpiactiveentities']
-            : [];
     }
+
+    /**
+     * Obtiene las restricciones de entidades usando métodos estándar de GLPI.
+     * Considera entidades recursivas (is_recursive = 1).
+     *
+     * @param string $itemtype Tipo de item (Ticket, Project, etc.)
+     * @param string $table_alias Alias de la tabla en la consulta (ej: 'glpi_tickets')
+     * @return array Criterio WHERE para restricciones de entidades
+     */
+    private function getEntityRestrictCriteria($itemtype, $table_alias = null)
+    {
+        // Usar el método estándar de GLPI para obtener restricciones de entidades
+        // Esto maneja automáticamente is_recursive y jerarquías de entidades
+        // getEntitiesRestrictCriteria($table, $field, $value, $recursive)
+        $table = $itemtype::getTable();
+        $field = 'entities_id';
+        
+        // Obtener todas las entidades activas del usuario (incluyendo recursivas)
+        $entities = [];
+        if (isset($_SESSION['glpiactiveentities']) && is_array($_SESSION['glpiactiveentities'])) {
+            $entities = $_SESSION['glpiactiveentities'];
+        }
+        
+        if (empty($entities)) {
+            return [];
+        }
+        
+        // Obtener información de recursividad de las entidades
+        $entity_ids = [];
+        foreach ($entities as $entity_id) {
+            $entity_ids[] = $entity_id;
+            // Si la entidad tiene is_recursive, incluir también sus ancestros
+            // Nota: En GLPI, esto se maneja automáticamente en getEntitiesRestrictCriteria
+            // pero aquí lo hacemos manualmente para mayor control
+        }
+        
+        // Usar el método estándar de GLPI si está disponible
+        if (function_exists('getEntitiesRestrictCriteria')) {
+            $entity_criteria = getEntitiesRestrictCriteria($table, $field, '', true);
+        } else {
+            // Fallback: construir manualmente las restricciones
+            // Obtener todas las entidades accesibles (incluyendo recursivas)
+            $all_entities = [];
+            foreach ($entities as $entity_id) {
+                $all_entities[] = $entity_id;
+                // Obtener ancestros si la entidad es recursiva
+                // En GLPI, esto se hace con getAncestorsOf() si está disponible
+                if (function_exists('getAncestorsOf')) {
+                    $ancestors = getAncestorsOf('glpi_entities', $entity_id);
+                    if (is_array($ancestors)) {
+                        $all_entities = array_merge($all_entities, $ancestors);
+                    }
+                }
+            }
+            $all_entities = array_unique($all_entities);
+            
+            $field_name = ($table_alias !== null) ? $table_alias . '.' . $field : $table . '.' . $field;
+            
+            // FIX: La lógica anterior era incorrecta para items recursivos en entidades padre.
+            // Un item en una entidad padre (ancestor) solo es visible si el item es recursivo (is_recursive=1).
+            // Si el item NO es recursivo, solo es visible si está en la entidad actual.
+            
+            // Como no podemos saber fácilmente si el item es recursivo en la query sin hacer JOINs complejos o subqueries,
+            // y getEntitiesRestrictCriteria ya maneja esto optimizadamente, este fallback es solo "mejor esfuerzo".
+            // Sin embargo, para cumplir con la corrección solicitada:
+            
+            // 1. Items en entidades activas directas (siempre visibles)
+            $direct_entities = $entities;
+            
+            // 2. Items en entidades ancestras (solo si is_recursive=1)
+            $ancestor_entities = array_diff($all_entities, $direct_entities);
+            
+            if (empty($ancestor_entities)) {
+                $entity_criteria = [$field_name => $direct_entities];
+            } else {
+                // Si hay ancestros, necesitamos comprobar is_recursive
+                // Asumimos que la tabla tiene campo 'is_recursive'. Si no, esto podría fallar, pero la mayoría de items con entidad lo tienen.
+                $recursive_field = ($table_alias !== null) ? $table_alias . '.is_recursive' : $table . '.is_recursive';
+                
+                $entity_criteria = [
+                    'OR' => [
+                        [$field_name => $direct_entities],
+                        [
+                            $field_name => $ancestor_entities,
+                            $recursive_field => 1
+                        ]
+                    ]
+                ];
+            }
+        }
+        
+        // Si se proporciona un alias de tabla, ajustar los nombres de campos
+        if ($table_alias !== null && $table_alias !== $table) {
+            $adjusted_criteria = [];
+            foreach ($entity_criteria as $key => $value) {
+                // Reemplazar el nombre de tabla con el alias
+                $new_key = str_replace($table . '.', $table_alias . '.', $key);
+                $adjusted_criteria[$new_key] = $value;
+            }
+            return $adjusted_criteria;
+        }
+        
+        return $entity_criteria;
+    }
+
 
     /**
      * Obtiene el nombre del técnico asignado a un ticket
@@ -158,10 +256,15 @@ class PluginGlobalsearchSearchEngine
     {
         global $DB;
 
+        if (!Ticket::canView()) {
+            return [];
+        }
+
+        // Obtener restricciones de entidades usando métodos estándar de GLPI
+        $entity_criteria = $this->getEntityRestrictCriteria('Ticket', 'glpi_tickets');
+
         // Búsqueda por ID exacta si es numérico
         if (is_numeric($this->raw_query)) {
-            if (!Ticket::canView()) return [];
-
             $criteria = [
                 'SELECT' => [
                     'glpi_tickets.id',
@@ -173,28 +276,27 @@ class PluginGlobalsearchSearchEngine
                     'glpi_tickets.date_mod'
                 ],
                 'FROM'   => 'glpi_tickets',
-                'WHERE'  => ['glpi_tickets.id' => $this->raw_query]
+                'WHERE'  => array_merge(
+                    ['glpi_tickets.id' => $this->raw_query],
+                    $entity_criteria
+                )
             ];
-
-            if (!empty($this->allowed_entities)) {
-                $criteria['WHERE']['glpi_tickets.entities_id'] = $this->allowed_entities;
-            }
 
             $iterator = $DB->request($criteria);
             $results = [];
             foreach ($iterator as $row) {
-                $row['status_name'] = Ticket::getStatus($row['status']);
-                $row['tech_name'] = $this->getTechnicianName($row['id']);
-                $results[] = $row;
+                // Verificar permisos adicionales antes de incluir el resultado
+                $ticket = new Ticket();
+                if ($ticket->can($row['id'], READ)) {
+                    $row['status_name'] = Ticket::getStatus($row['status']);
+                    $row['tech_name'] = $this->getTechnicianName($row['id']);
+                    $results[] = $row;
+                }
             }
             return $results;
         }
 
         if (mb_strlen($this->raw_query) < 3) {
-            return [];
-        }
-
-        if (!Ticket::canView()) {
             return [];
         }
 
@@ -212,22 +314,25 @@ class PluginGlobalsearchSearchEngine
                 'glpi_tickets.date_mod'
             ],
             'FROM'   => 'glpi_tickets',
-            'WHERE'  => $this->getMultiWordCriteria($search_fields),
+            'WHERE'  => array_merge(
+                $this->getMultiWordCriteria($search_fields),
+                $entity_criteria
+            ),
             'ORDER'  => 'glpi_tickets.date_mod DESC',
             'LIMIT'  => (int)$limit
         ];
-
-        if (!empty($this->allowed_entities)) {
-            $criteria['WHERE']['glpi_tickets.entities_id'] = $this->allowed_entities;
-        }
 
         $iterator = $DB->request($criteria);
         $results  = [];
 
         foreach ($iterator as $row) {
-            $row['status_name'] = Ticket::getStatus($row['status']);
-            $row['tech_name'] = $this->getTechnicianName($row['id']);
-            $results[] = $row;
+            // Verificar permisos adicionales antes de incluir el resultado
+            $ticket = new Ticket();
+            if ($ticket->can($row['id'], READ)) {
+                $row['status_name'] = Ticket::getStatus($row['status']);
+                $row['tech_name'] = $this->getTechnicianName($row['id']);
+                $results[] = $row;
+            }
         }
 
         return $results;
@@ -240,53 +345,78 @@ class PluginGlobalsearchSearchEngine
     {
         global $DB;
 
-        if (!Project::canView()) return [];
+        if (!Project::canView()) {
+            return [];
+        }
+
+        // Obtener restricciones de entidades usando métodos estándar de GLPI
+        $entity_criteria = $this->getEntityRestrictCriteria('Project', 'glpi_projects');
 
         if (is_numeric($this->raw_query)) {
             $criteria = [
-                'SELECT' => ['id', 'name', 'projectstates_id', 'entities_id', 'plan_start_date', 'plan_end_date', 'date_mod', 'date'],
+                'SELECT' => [
+                    'glpi_projects.id',
+                    'glpi_projects.name',
+                    'glpi_projects.projectstates_id',
+                    'glpi_projects.entities_id',
+                    'glpi_projects.plan_start_date',
+                    'glpi_projects.plan_end_date',
+                    'glpi_projects.date_mod',
+                    'glpi_projects.date'
+                ],
                 'FROM'   => 'glpi_projects',
-                'WHERE'  => ['id' => $this->raw_query]
+                'WHERE'  => array_merge(
+                    ['glpi_projects.id' => $this->raw_query],
+                    $entity_criteria
+                )
             ];
-            if (!empty($this->allowed_entities)) $criteria['WHERE']['entities_id'] = $this->allowed_entities;
 
             $iterator = $DB->request($criteria);
             $results = [];
             foreach ($iterator as $row) {
-                $results[] = $row;
+                // Verificar permisos adicionales
+                $project = new Project();
+                if ($project->can($row['id'], READ)) {
+                    $results[] = $row;
+                }
             }
             return $results;
         }
 
-        if (mb_strlen($this->raw_query) < 3) return [];
+        if (mb_strlen($this->raw_query) < 3) {
+            return [];
+        }
 
-        $search_fields = ['name', 'comment', 'content'];
+        $search_fields = ['glpi_projects.name', 'glpi_projects.comment', 'glpi_projects.content'];
 
         $criteria = [
             'SELECT' => [
-                'id',
-                'name',
-                'projectstates_id',
-                'entities_id',
-                'plan_start_date',
-                'plan_end_date',
-                'date_mod',
-                'date'
+                'glpi_projects.id',
+                'glpi_projects.name',
+                'glpi_projects.projectstates_id',
+                'glpi_projects.entities_id',
+                'glpi_projects.plan_start_date',
+                'glpi_projects.plan_end_date',
+                'glpi_projects.date_mod',
+                'glpi_projects.date'
             ],
             'FROM'   => 'glpi_projects',
-            'WHERE'  => $this->getMultiWordCriteria($search_fields),
-            'ORDER'  => 'date_mod DESC',
+            'WHERE'  => array_merge(
+                $this->getMultiWordCriteria($search_fields),
+                $entity_criteria
+            ),
+            'ORDER'  => 'glpi_projects.date_mod DESC',
             'LIMIT'  => (int)$limit
         ];
-
-        if (!empty($this->allowed_entities)) {
-            $criteria['WHERE']['entities_id'] = $this->allowed_entities;
-        }
 
         $iterator = $DB->request($criteria);
         $results = [];
         foreach ($iterator as $row) {
-            $results[] = $row;
+            // Verificar permisos adicionales
+            $project = new Project();
+            if ($project->can($row['id'], READ)) {
+                $results[] = $row;
+            }
         }
         return $results;
     }
@@ -298,47 +428,80 @@ class PluginGlobalsearchSearchEngine
     {
         global $DB;
 
-        if (!Document::canView()) return [];
+        if (!Document::canView()) {
+            return [];
+        }
+
+        // Obtener restricciones de entidades usando métodos estándar de GLPI
+        $entity_criteria = $this->getEntityRestrictCriteria('Document', 'glpi_documents');
 
         if (is_numeric($this->raw_query)) {
             $criteria = [
-                'SELECT' => ['id', 'name', 'filename', 'entities_id', 'date_mod', 'documentcategories_id'],
+                'SELECT' => [
+                    'glpi_documents.id',
+                    'glpi_documents.name',
+                    'glpi_documents.filename',
+                    'glpi_documents.entities_id',
+                    'glpi_documents.date_mod',
+                    'glpi_documents.documentcategories_id'
+                ],
                 'FROM'   => 'glpi_documents',
-                'WHERE'  => ['id' => $this->raw_query]
+                'WHERE'  => array_merge(
+                    [
+                        'glpi_documents.id' => $this->raw_query,
+                        'glpi_documents.is_deleted' => 0
+                    ],
+                    $entity_criteria
+                )
             ];
-            if (!empty($this->allowed_entities)) $criteria['WHERE']['entities_id'] = $this->allowed_entities;
 
             $iterator = $DB->request($criteria);
             $results = [];
             foreach ($iterator as $row) {
-                $results[] = $row;
+                // Verificar permisos adicionales
+                $document = new Document();
+                if ($document->can($row['id'], READ)) {
+                    $results[] = $row;
+                }
             }
             return $results;
         }
 
-        if (mb_strlen($this->raw_query) < 3) return [];
+        if (mb_strlen($this->raw_query) < 3) {
+            return [];
+        }
 
-        $search_fields = ['name', 'filename', 'comment'];
+        $search_fields = ['glpi_documents.name', 'glpi_documents.filename', 'glpi_documents.comment'];
 
         $criteria = [
-            'SELECT' => ['id', 'name', 'filename', 'entities_id', 'date_mod', 'documentcategories_id'],
+            'SELECT' => [
+                'glpi_documents.id',
+                'glpi_documents.name',
+                'glpi_documents.filename',
+                'glpi_documents.entities_id',
+                'glpi_documents.date_mod',
+                'glpi_documents.documentcategories_id'
+            ],
             'FROM'   => 'glpi_documents',
-            'WHERE'  => $this->getMultiWordCriteria($search_fields),
-            'ORDER'  => 'date_mod DESC',
+            'WHERE'  => array_merge(
+                $this->getMultiWordCriteria($search_fields),
+                [
+                    'glpi_documents.is_deleted' => 0
+                ],
+                $entity_criteria
+            ),
+            'ORDER'  => 'glpi_documents.date_mod DESC',
             'LIMIT'  => (int)$limit
         ];
-
-        // Filtro extra: no eliminados
-        $criteria['WHERE']['is_deleted'] = 0;
-
-        if (!empty($this->allowed_entities)) {
-            $criteria['WHERE']['entities_id'] = $this->allowed_entities;
-        }
 
         $iterator = $DB->request($criteria);
         $results = [];
         foreach ($iterator as $row) {
-            $results[] = $row;
+            // Verificar permisos adicionales
+            $document = new Document();
+            if ($document->can($row['id'], READ)) {
+                $results[] = $row;
+            }
         }
         return $results;
     }
@@ -350,47 +513,80 @@ class PluginGlobalsearchSearchEngine
     {
         global $DB;
 
-        if (!Software::canView()) return [];
+        if (!Software::canView()) {
+            return [];
+        }
+
+        // Obtener restricciones de entidades usando métodos estándar de GLPI
+        $entity_criteria = $this->getEntityRestrictCriteria('Software', 'glpi_softwares');
 
         if (is_numeric($this->raw_query)) {
             $criteria = [
-                'SELECT' => ['id', 'name', 'entities_id', 'date_mod', 'manufacturers_id'],
+                'SELECT' => [
+                    'glpi_softwares.id',
+                    'glpi_softwares.name',
+                    'glpi_softwares.entities_id',
+                    'glpi_softwares.date_mod',
+                    'glpi_softwares.manufacturers_id'
+                ],
                 'FROM'   => 'glpi_softwares',
-                'WHERE'  => ['id' => $this->raw_query]
+                'WHERE'  => array_merge(
+                    [
+                        'glpi_softwares.id' => $this->raw_query,
+                        'glpi_softwares.is_deleted' => 0,
+                        'glpi_softwares.is_template' => 0
+                    ],
+                    $entity_criteria
+                )
             ];
-            if (!empty($this->allowed_entities)) $criteria['WHERE']['entities_id'] = $this->allowed_entities;
 
             $iterator = $DB->request($criteria);
             $results = [];
             foreach ($iterator as $row) {
-                $results[] = $row;
+                // Verificar permisos adicionales
+                $software = new Software();
+                if ($software->can($row['id'], READ)) {
+                    $results[] = $row;
+                }
             }
             return $results;
         }
 
-        if (mb_strlen($this->raw_query) < 3) return [];
+        if (mb_strlen($this->raw_query) < 3) {
+            return [];
+        }
 
-        $search_fields = ['name', 'comment'];
+        $search_fields = ['glpi_softwares.name', 'glpi_softwares.comment'];
 
         $criteria = [
-            'SELECT' => ['id', 'name', 'entities_id', 'date_mod', 'manufacturers_id'],
+            'SELECT' => [
+                'glpi_softwares.id',
+                'glpi_softwares.name',
+                'glpi_softwares.entities_id',
+                'glpi_softwares.date_mod',
+                'glpi_softwares.manufacturers_id'
+            ],
             'FROM'   => 'glpi_softwares',
-            'WHERE'  => $this->getMultiWordCriteria($search_fields),
-            'ORDER'  => 'date_mod DESC',
+            'WHERE'  => array_merge(
+                $this->getMultiWordCriteria($search_fields),
+                [
+                    'glpi_softwares.is_deleted' => 0,
+                    'glpi_softwares.is_template' => 0
+                ],
+                $entity_criteria
+            ),
+            'ORDER'  => 'glpi_softwares.date_mod DESC',
             'LIMIT'  => (int)$limit
         ];
-
-        $criteria['WHERE']['is_deleted'] = 0;
-        $criteria['WHERE']['is_template'] = 0;
-
-        if (!empty($this->allowed_entities)) {
-            $criteria['WHERE']['entities_id'] = $this->allowed_entities;
-        }
 
         $iterator = $DB->request($criteria);
         $results = [];
         foreach ($iterator as $row) {
-            $results[] = $row;
+            // Verificar permisos adicionales
+            $software = new Software();
+            if ($software->can($row['id'], READ)) {
+                $results[] = $row;
+            }
         }
         return $results;
     }
@@ -402,50 +598,81 @@ class PluginGlobalsearchSearchEngine
     {
         global $DB;
 
-        if (!User::canView()) return [];
+        if (!User::canView()) {
+            return [];
+        }
+
+        // Los usuarios no tienen restricciones de entidad directas como otros items
+        // pero debemos verificar permisos de visualización
 
         if (is_numeric($this->raw_query)) {
-            // Búsqueda por ID simplificada
             $criteria = [
-                'SELECT' => ['id', 'name', 'realname', 'firstname', 'phone', 'mobile', 'date_mod'],
+                'SELECT' => [
+                    'glpi_users.id',
+                    'glpi_users.name',
+                    'glpi_users.realname',
+                    'glpi_users.firstname',
+                    'glpi_users.phone',
+                    'glpi_users.mobile',
+                    'glpi_users.date_mod'
+                ],
                 'FROM'   => 'glpi_users',
-                'WHERE'  => ['id' => $this->raw_query, 'is_deleted' => 0]
+                'WHERE'  => [
+                    'glpi_users.id' => $this->raw_query,
+                    'glpi_users.is_deleted' => 0
+                ]
             ];
-            // Usuarios no siempre tienen entidades estrictas (pueden ser recursivos), 
-            // pero para simplificar y seguridad, no añadimos restricción fuerte de entidad aquí 
-            // a menos que la lógica de negocio lo exija.
 
             $iterator = $DB->request($criteria);
             $results = [];
             foreach ($iterator as $row) {
-                $fullname = trim(($row['firstname'] ?? '') . ' ' . ($row['realname'] ?? ''));
-                $row['fullname'] = $fullname ?: $row['name'];
-                $results[] = $row;
+                // Verificar permisos adicionales
+                $user = new User();
+                if ($user->can($row['id'], READ)) {
+                    $fullname = trim(($row['firstname'] ?? '') . ' ' . ($row['realname'] ?? ''));
+                    $row['fullname'] = $fullname ?: $row['name'];
+                    $results[] = $row;
+                }
             }
             return $results;
         }
 
-        if (mb_strlen($this->raw_query) < 3) return [];
+        if (mb_strlen($this->raw_query) < 3) {
+            return [];
+        }
 
-        $search_fields = ['name', 'realname', 'firstname', 'phone', 'mobile'];
+        $search_fields = ['glpi_users.name', 'glpi_users.realname', 'glpi_users.firstname', 'glpi_users.phone', 'glpi_users.mobile'];
 
         $criteria = [
-            'SELECT' => ['id', 'name', 'realname', 'firstname', 'phone', 'mobile', 'date_mod'],
+            'SELECT' => [
+                'glpi_users.id',
+                'glpi_users.name',
+                'glpi_users.realname',
+                'glpi_users.firstname',
+                'glpi_users.phone',
+                'glpi_users.mobile',
+                'glpi_users.date_mod'
+            ],
             'FROM'   => 'glpi_users',
-            'WHERE'  => $this->getMultiWordCriteria($search_fields),
-            'ORDER'  => 'date_mod DESC',
+            'WHERE'  => array_merge(
+                $this->getMultiWordCriteria($search_fields),
+                ['glpi_users.is_deleted' => 0]
+            ),
+            'ORDER'  => 'glpi_users.date_mod DESC',
             'LIMIT'  => (int)$limit
         ];
-
-        $criteria['WHERE']['is_deleted'] = 0;
 
         $iterator = $DB->request($criteria);
         $results  = [];
 
         foreach ($iterator as $row) {
-            $fullname = trim(($row['firstname'] ?? '') . ' ' . ($row['realname'] ?? ''));
-            $row['fullname'] = $fullname ?: $row['name'];
-            $results[] = $row;
+            // Verificar permisos adicionales
+            $user = new User();
+            if ($user->can($row['id'], READ)) {
+                $fullname = trim(($row['firstname'] ?? '') . ' ' . ($row['realname'] ?? ''));
+                $row['fullname'] = $fullname ?: $row['name'];
+                $results[] = $row;
+            }
         }
 
         return $results;
@@ -458,8 +685,16 @@ class PluginGlobalsearchSearchEngine
     {
         global $DB;
 
-        if (mb_strlen($this->raw_query) < 1) return [];
-        if (!TicketTask::canView()) return [];
+        if (mb_strlen($this->raw_query) < 1) {
+            return [];
+        }
+        
+        if (!TicketTask::canView()) {
+            return [];
+        }
+
+        // Obtener restricciones de entidades para tickets (las tareas están vinculadas a tickets)
+        $entity_criteria = $this->getEntityRestrictCriteria('Ticket', 'glpi_tickets');
 
         // Campos donde buscar
         $search_fields = ['glpi_tickettasks.content'];
@@ -491,6 +726,9 @@ class PluginGlobalsearchSearchEngine
             $where_criteria = $content_criteria;
         }
 
+        // Combinar con restricciones de entidades
+        $where_criteria = array_merge($where_criteria, $entity_criteria);
+
         $criteria = [
             'SELECT' => [
                 'glpi_tickettasks.id',
@@ -499,6 +737,7 @@ class PluginGlobalsearchSearchEngine
                 'glpi_tickettasks.date',
                 'glpi_tickettasks.users_id',
                 'glpi_tickettasks.date_mod',
+                'glpi_tickettasks.is_private',
                 'glpi_tickets.name AS ticket_name',
                 'glpi_tickets.entities_id'
             ],
@@ -511,19 +750,27 @@ class PluginGlobalsearchSearchEngine
                     ]
                 ]
             ],
-            'WHERE'  => $where_criteria,
+            'WHERE'  => array_merge(
+                $where_criteria,
+                [
+                    'OR' => [
+                        'glpi_tickettasks.is_private' => 0,
+                        'glpi_tickettasks.users_id'   => Session::getLoginUserID()
+                    ]
+                ]
+            ),
             'ORDER'  => 'glpi_tickettasks.date_mod DESC',
             'LIMIT'  => (int)$limit
         ];
 
-        if (!empty($this->allowed_entities)) {
-            $criteria['WHERE']['glpi_tickets.entities_id'] = $this->allowed_entities;
-        }
-
         $iterator = $DB->request($criteria);
         $results = [];
         foreach ($iterator as $row) {
-            $results[] = $row;
+            // Verificar permisos: el método can() ya verifica tareas privadas y otros permisos
+            $tickettask = new TicketTask();
+            if ($tickettask->can($row['id'], READ)) {
+                $results[] = $row;
+            }
         }
         return $results;
     }
@@ -535,46 +782,97 @@ class PluginGlobalsearchSearchEngine
     {
         global $DB;
 
-        if (!ProjectTask::canView()) return [];
+        if (!ProjectTask::canView()) {
+            return [];
+        }
+
+        // Obtener restricciones de entidades usando métodos estándar de GLPI
+        $entity_criteria = $this->getEntityRestrictCriteria('ProjectTask', 'glpi_projecttasks');
 
         if (is_numeric($this->raw_query)) {
             $criteria = [
-                'SELECT' => ['id', 'name', 'content', 'projects_id', 'entities_id', 'date_mod', 'plan_start_date'],
+                'SELECT' => [
+                    'glpi_projecttasks.id',
+                    'glpi_projecttasks.name',
+                    'glpi_projecttasks.content',
+                    'glpi_projecttasks.projects_id',
+                    'glpi_projecttasks.entities_id',
+                    'glpi_projecttasks.date_mod',
+                    'glpi_projecttasks.plan_start_date',
+                    'glpi_projecttasks.is_private'
+                ],
                 'FROM'   => 'glpi_projecttasks',
-                'WHERE'  => ['id' => $this->raw_query]
+                'WHERE'  => array_merge(
+                    [
+                        'glpi_projecttasks.id' => $this->raw_query,
+                        'glpi_projecttasks.is_template' => 0
+                    ],
+                    $entity_criteria,
+                    [
+                        'OR' => [
+                            'glpi_projecttasks.is_private' => 0,
+                            'glpi_projecttasks.users_id'   => Session::getLoginUserID()
+                        ]
+                    ]
+                )
             ];
-            if (!empty($this->allowed_entities)) $criteria['WHERE']['entities_id'] = $this->allowed_entities;
 
             $iterator = $DB->request($criteria);
             $results = [];
             foreach ($iterator as $row) {
-                $results[] = $row;
+                // Verificar permisos: el método can() ya verifica tareas privadas y otros permisos
+                $projecttask = new ProjectTask();
+                if ($projecttask->can($row['id'], READ)) {
+                    $results[] = $row;
+                }
             }
             return $results;
         }
 
-        if (mb_strlen($this->raw_query) < 3) return [];
+        if (mb_strlen($this->raw_query) < 3) {
+            return [];
+        }
 
-        $search_fields = ['name', 'content', 'comment'];
+        $search_fields = ['glpi_projecttasks.name', 'glpi_projecttasks.content', 'glpi_projecttasks.comment'];
 
         $criteria = [
-            'SELECT' => ['id', 'name', 'content', 'projects_id', 'entities_id', 'date_mod', 'plan_start_date'],
+            'SELECT' => [
+                'glpi_projecttasks.id',
+                'glpi_projecttasks.name',
+                'glpi_projecttasks.content',
+                'glpi_projecttasks.projects_id',
+                'glpi_projecttasks.entities_id',
+                'glpi_projecttasks.date_mod',
+                'glpi_projecttasks.plan_start_date',
+                'glpi_projecttasks.is_private',
+                'glpi_projecttasks.users_id'
+            ],
             'FROM'   => 'glpi_projecttasks',
-            'WHERE'  => $this->getMultiWordCriteria($search_fields),
-            'ORDER'  => 'date_mod DESC',
+            'WHERE'  => array_merge(
+                $this->getMultiWordCriteria($search_fields),
+                [
+                    'glpi_projecttasks.is_template' => 0
+                ],
+                $entity_criteria,
+                [
+                    'OR' => [
+                        'glpi_projecttasks.is_private' => 0,
+                        'glpi_projecttasks.users_id'   => Session::getLoginUserID()
+                    ]
+                ]
+            ),
+            'ORDER'  => 'glpi_projecttasks.date_mod DESC',
             'LIMIT'  => (int)$limit
         ];
-
-        $criteria['WHERE']['is_template'] = 0;
-
-        if (!empty($this->allowed_entities)) {
-            $criteria['WHERE']['entities_id'] = $this->allowed_entities;
-        }
 
         $iterator = $DB->request($criteria);
         $results = [];
         foreach ($iterator as $row) {
-            $results[] = $row;
+            // Verificar permisos: el método can() ya verifica tareas privadas y otros permisos
+            $projecttask = new ProjectTask();
+            if ($projecttask->can($row['id'], READ)) {
+                $results[] = $row;
+            }
         }
         return $results;
     }

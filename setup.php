@@ -16,11 +16,6 @@ function plugin_init_globalsearch()
     // Marcar el plugin como compatible con CSRF
     $PLUGIN_HOOKS['csrf_compliant']['globalsearch'] = true;
 
-    // Inyectar root_doc como atributo en el <body> → <body data-root-doc="/glpi">
-    $PLUGIN_HOOKS['body_attr']['globalsearch'] = [
-        'data-root-doc' => $CFG_GLPI['root_doc']
-    ];
-
     // Inyectar nuestro JS en la interfaz central
     $PLUGIN_HOOKS['add_javascript']['globalsearch'][] = 'js/globalsearch_header.js';
 

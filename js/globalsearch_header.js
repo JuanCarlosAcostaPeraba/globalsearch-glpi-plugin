@@ -75,9 +75,9 @@ document.addEventListener('DOMContentLoaded', function () {
     `;
     document.body.appendChild(modal);
 
-    // Construir action del formulario usando data-root-doc
+    // Construir action del formulario usando CFG_GLPI.root_doc (disponible globalmente en GLPI)
     const form = modal.querySelector('form.globalsearch-form');
-    const rootDoc = document.body.dataset.rootDoc || '';
+    const rootDoc = (typeof CFG_GLPI !== 'undefined' && CFG_GLPI.root_doc) ? CFG_GLPI.root_doc : '';
     const actionUrl = rootDoc + '/plugins/globalsearch/front/search.php';
     form.setAttribute('action', actionUrl);
 
