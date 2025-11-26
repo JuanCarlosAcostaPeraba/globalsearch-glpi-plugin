@@ -1,117 +1,107 @@
-# Global Search Enhancer for GLPI
+# Global Search Enhancer
 
-[![GLPI](https://img.shields.io/badge/GLPI-10.x-blue.svg)](https://glpi-project.org)
-[![License: GPLv3+](https://img.shields.io/badge/License-GPLv3+-blue.svg)](https://www.gnu.org/licenses/gpl-3.0.html)
-![Status](https://img.shields.io/badge/Status-Stable-brightgreen.svg)
-![Maintained](https://img.shields.io/badge/Maintained-yes-success.svg)
+Version GLPI Marketplace GLPI License: GPLv3+ Maintained
 
-A custom global search engine plugin for [GLPI](https://glpi-project.org/) that replaces the default search functionality with an enhanced search experience.
+A lightweight GLPI plugin that enhances the **Global Search** by replacing the default search with a custom engine that queries the database directly, including closed tickets and resolved projects.
 
-## Description
+## ✨ Features
 
-This plugin replaces GLPI's default global search with a custom engine that queries the database directly, including closed tickets and resolved projects, with full control over filters and ranking.
+* 🔹 Multi-word "Google-style" search functionality
+* 🔹 Search in closed tickets and resolved projects
+* 🔹 Configurable search types via admin panel
+* 🔹 Search across 7 different item types:
+  * Tickets (with status and assigned technician)
+  * Projects (including resolved)
+  * Documents
+  * Software
+  * Users
+  * Ticket Tasks
+  * Project Tasks
+* 🔹 Smart ID search for numeric queries
+* 🔹 Entity-aware with permission checking
+* 🔹 Results ranked by modification date
 
-## Features
+## 📦 Requirements
 
-- **Multi-word search**: Searches using "Google-style" query matching, where all words must appear in at least one of the searched fields
-- **Comprehensive search**: Searches across multiple GLPI item types in a single query
-- **ID search**: Supports direct search by numeric ID for quick access
-- **Configurable search types**: Enable or disable specific search categories
-- **Entity-aware**: Respects GLPI's entity permissions
-- **Modern UI**: Clean modal-based search interface integrated into GLPI's header
+* GLPI **10.0.x**
+* PHP **7.4+**
 
-## Supported Search Types
+## 🚀 Installation
 
-| Type | Description |
-|------|-------------|
-| Tickets | Search in ticket name and content, including closed tickets |
-| Projects | Search in project name, comment, and content |
-| Documents | Search in document name, filename, and comments |
-| Software | Search in software name and comments |
-| Users | Search by name, username, first name, phone, or mobile |
-| Ticket Tasks | Search in ticket task content |
-| Project Tasks | Search in project task name, content, and comments |
+### Option 1: From GLPI Marketplace (Recommended)
 
-## Requirements
+1. Go to **GLPI → Configuration → Plugins → Marketplace**
+2. Search for **Global Search Enhancer**
+3. Click **Install**, then **Enable**
 
-- GLPI version: **10.0.0** to **10.0.99**
-- PHP: Compatible with GLPI 10.0 requirements
+### Option 2: Manual Installation
 
-## Installation
+1. Download the latest release from GitHub Releases
+2. Extract and copy the folder `globalsearch` into:  
+```  
+glpi/plugins/  
+```
+3. Go to **GLPI → Configuration → Plugins**
+4. Find **Global Search Enhancer**
+5. Click **Install**, then **Enable**
 
-1. Download or clone the plugin to your GLPI plugins directory:
-   ```bash
-   cd /path/to/glpi/plugins
-   git clone https://github.com/JuanCarlosAcostaPeraba/globalsearch-glpi-plugin globalsearch
-   ```
+## ⚙️ Configuration
 
-2. Navigate to **Setup > Plugins** in GLPI
+Access the plugin settings via **GLPI → Configuration → Plugins → Global Search Enhancer**.
 
-3. Find "Global Search Enhancer" in the plugin list
+Available options:
 
-4. Click **Install** and then **Enable**
+* **Enable/disable search** for each type (Tickets, Projects, Documents, Software, Users, Ticket Tasks, Project Tasks)
 
-## Configuration
+## 🔍 How it works
 
-1. Go to **Setup > Plugins**
+### Search
 
-2. Click on **Global Search Enhancer** to access the configuration page
+* Uses multi-word "Google-style" search - all words must appear in results
+* Numeric queries search by ID directly
+* Searches in closed/resolved items
+* Results sorted by modification date
 
-3. Enable or disable the search types you want to include in global searches
-
-4. Click **Save** to apply your changes
-
-## Usage
-
-1. Click the **"Búsqueda global"** button in the GLPI header (labeled "Global Search" in the UI)
-
-2. Enter your search query in the modal that appears:
-   - Minimum 3 characters for text search
-   - Enter a number for direct ID search
-
-3. Press **Enter** or click the search button
-
-4. Results are displayed grouped by item type (Tickets, Projects, Documents, etc.)
-
-## Search Tips
-
-- **Multi-word queries**: Enter multiple words to find items containing all words (e.g., "network issue" finds items with both "network" AND "issue")
-- **ID search**: Enter a numeric ID to directly find an item by its ID
-- **Minimum length**: Text searches require at least 3 characters
-
-## File Structure
+## 🏗️ Plugin Structure
 
 ```
 globalsearch/
-├── css/
-│   └── globalsearch.css       # Modal and UI styles
-├── front/
-│   ├── config.form.php        # Configuration form handler
-│   └── search.php             # Search endpoint
+├── setup.php                  # Plugin registration
+├── hook.php                   # Installation hooks
+├── plugin.xml                 # Plugin metadata
 ├── inc/
 │   ├── config.class.php       # Configuration management
-│   └── searchengine.class.php # Core search engine
+│   └── searchengine.class.php # Search engine logic
+├── front/
+│   ├── search.php             # Search results page
+│   └── config.form.php        # Configuration form
 ├── install/
-│   └── install.php            # Installation/uninstallation
+│   └── install.php            # Installation script
 ├── js/
-│   └── globalsearch_header.js # Header button and modal
+│   └── globalsearch_header.js # Frontend override
+├── css/
+│   └── globalsearch.css       # Styling
 ├── templates/
 │   └── search_results.html.twig # Results template
-├── hook.php                   # Plugin hooks
-├── plugin.xml                 # Plugin metadata
-└── setup.php                  # Plugin initialization
+├── locales/
+│   ├── en_GB.php              # English
+│   └── es_ES.php              # Spanish
+├── assets/
+│   └── logo.png               # Plugin logo
+└── README.md
 ```
 
-## Author
+## 🌐 Translations
 
-**Juan Carlos Acosta Perabá**
+* English (en_GB) - Default
+* Spanish (es_ES)
 
-- GitHub: [@JuanCarlosAcostaPeraba](https://github.com/JuanCarlosAcostaPeraba)
+## 📝 License
 
-## License
+**GPLv3+**
 
-This plugin is licensed under the **GPLv3+** license.
+Fully compatible with GLPI plugin licensing requirements.
 
-## Contributing
+## 👤 Author
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Developed by **Juan Carlos Acosta Perabá** for **HUC – Hospital Universitario de Canarias**.
