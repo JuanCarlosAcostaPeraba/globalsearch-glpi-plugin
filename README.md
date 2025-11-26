@@ -1,6 +1,10 @@
 # Global Search Enhancer
 
-Version GLPI Marketplace GLPI License: GPLv3+ Maintained
+[![Version](https://img.shields.io/badge/Version-1.3.0-green.svg)](https://github.com/JuanCarlosAcostaPeraba/kanbanlooksgood/releases)
+[![GLPI Marketplace](https://img.shields.io/badge/GLPI_Marketplace-Submited-orange.svg)](https://plugins.glpi-project.org/#/author/146)
+[![GLPI](https://img.shields.io/badge/GLPI-10.0.x-blue.svg)](https://glpi-project.org)
+[![License: GPLv3+](https://img.shields.io/badge/License-GPLv3+-blue.svg)](https://www.gnu.org/licenses/gpl-3.0.html)
+[![Maintained](https://img.shields.io/badge/Maintained-yes-success.svg)]()
 
 A lightweight GLPI plugin that enhances the **Global Search** by replacing the default search with a custom engine that queries the database directly, including closed tickets and resolved projects.
 
