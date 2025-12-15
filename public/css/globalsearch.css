@@ -58,3 +58,5 @@ form[action*="front/search.php"][role="search"][data-submit-once] {
         transform: translateX(-50%) translateY(0);
     }
 }
+
+

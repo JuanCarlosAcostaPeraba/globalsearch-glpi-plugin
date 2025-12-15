@@ -1,0 +1,121 @@
+document.addEventListener('DOMContentLoaded', function () {
+    // Evitar duplicados si el script se inyecta múltiples veces
+    if (document.querySelector('.globalsearch-btn')) {
+        return;
+    }
+
+    // Buscar el formulario de búsqueda global nativo de GLPI
+    // Está en: .ms-md-auto o .ms-lg-auto que contiene un form con input[name="globalsearch"]
+    const nativeSearchForm = document.querySelector('form[data-submit-once] input[name="globalsearch"]');
+
+    if (!nativeSearchForm) {
+        console.warn('[globalsearch] No se ha encontrado la barra de búsqueda nativa de GLPI.');
+        return;
+    }
+
+    // El contenedor padre del formulario (donde insertaremos el botón)
+    const searchContainer = nativeSearchForm.closest('div[class*="ms-"]');
+
+    if (!searchContainer) {
+        console.warn('[globalsearch] No se ha encontrado el contenedor de la barra de búsqueda.');
+        return;
+    }
+
+    // Crear botón "Buscar" con estilo similar al de GLPI
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-ghost-secondary globalsearch-btn me-2';
+    btn.title = 'Búsqueda global avanzada';
+    // Icono de búsqueda con zoom (para diferenciarlo del nativo) + texto visible
+    btn.innerHTML = '<i class="ti ti-search me-1" aria-hidden="true"></i><span>Búsqueda global</span>';
+
+    // Insertar botón justo ANTES del contenedor de búsqueda (a su izquierda)
+    searchContainer.parentNode.insertBefore(btn, searchContainer);
+
+    // Crear modal
+    const modal = document.createElement('div');
+    modal.className = 'globalsearch-modal d-none';
+
+    // Estructura del modal
+    modal.innerHTML = `
+        <div class="globalsearch-backdrop"></div>
+        <div class="globalsearch-dialog card shadow-lg">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h3 class="card-title mb-0">Búsqueda global</h3>
+                <button type="button" class="btn btn-link p-0 m-0 globalsearch-close text-secondary" title="Cerrar">
+                    <i class="ti ti-x" aria-hidden="true"></i>
+                </button>
+            </div>
+            <div class="card-body">
+                <form method="get" class="globalsearch-form">
+                    <div class="mb-3">
+                        <div class="input-group">
+                            <span class="input-group-text">
+                                <i class="ti ti-search"></i>
+                            </span>
+                            <input type="text"
+                                   name="globalsearch"
+                                   class="form-control form-control-lg"
+                                   placeholder="Buscar tickets, proyectos (mín. 3 caracteres)..."
+                                   autocomplete="off"
+                                   autofocus />
+                        </div>
+                    </div>
+                    <div class="d-flex justify-content-end gap-2">
+                        <button type="button" class="btn btn-outline-secondary globalsearch-close">
+                            Cancelar
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                            Buscar
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+
+    // Construir action del formulario usando CFG_GLPI.root_doc (disponible globalmente en GLPI)
+    const form = modal.querySelector('form.globalsearch-form');
+    const rootDoc = (typeof CFG_GLPI !== 'undefined' && CFG_GLPI.root_doc) ? CFG_GLPI.root_doc : '';
+    const actionUrl = rootDoc + '/plugins/globalsearch/front/search.php';
+    form.setAttribute('action', actionUrl);
+
+    // Helpers abrir/cerrar
+    function openModal() {
+        modal.classList.remove('d-none');
+        // Pequeño delay para asegurar que el modal es visible antes del focus
+        setTimeout(() => {
+            const input = modal.querySelector('input[name="globalsearch"]');
+            if (input) {
+                input.focus();
+                input.select();
+            }
+        }, 50);
+    }
+
+    function closeModal() {
+        modal.classList.add('d-none');
+    }
+
+    // Eventos
+    btn.addEventListener('click', openModal);
+
+    modal.addEventListener('click', function (e) {
+        if (e.target.classList.contains('globalsearch-backdrop')) {
+            closeModal();
+        }
+    });
+
+    modal.querySelectorAll('.globalsearch-close').forEach(function (el) {
+        el.addEventListener('click', closeModal);
+    });
+
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && !modal.classList.contains('d-none')) {
+            closeModal();
+        }
+    });
+});
+
+
