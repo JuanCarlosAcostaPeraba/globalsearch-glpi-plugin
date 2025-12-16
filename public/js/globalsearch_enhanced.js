@@ -9,6 +9,32 @@
     const STORAGE_PREFIX = 'globalsearch_columns_';
 
     /**
+     * Utilidades para cookies
+     */
+    function setCookie(name, value, days) {
+        const expires = new Date();
+        expires.setTime(expires.getTime() + (days * 24 * 60 * 60 * 1000));
+        document.cookie = name + '=' + encodeURIComponent(value) + ';expires=' + expires.toUTCString() + ';path=/';
+    }
+
+    function getCookie(name) {
+        const nameEQ = name + '=';
+        const ca = document.cookie.split(';');
+        for (let i = 0; i < ca.length; i++) {
+            let c = ca[i];
+            while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+            if (c.indexOf(nameEQ) === 0) {
+                return decodeURIComponent(c.substring(nameEQ.length, c.length));
+            }
+        }
+        return null;
+    }
+
+    function deleteCookie(name) {
+        document.cookie = name + '=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/;';
+    }
+
+    /**
      * Inicializar todas las funcionalidades para cada tabla
      */
     function initAllTables() {
@@ -160,6 +186,13 @@
         const headerRow = thead.querySelector('tr');
         if (!headerRow) return;
 
+        // Verificar si ya existe una fila de filtros
+        const existingFilterRow = thead.querySelector('.table-filters');
+        if (existingFilterRow) {
+            console.log('GlobalSearch: Filters already exist for this table, skipping');
+            return; // Ya existe, no crear otra
+        }
+
         // Crear fila de filtros
         const filterRow = document.createElement('tr');
         filterRow.className = 'table-filters';
@@ -216,7 +249,17 @@
         if (!tbody) return;
 
         const filterInputs = table.querySelectorAll('.filter-input');
-        const rows = Array.from(tbody.querySelectorAll('tr:not(.no-results)'));
+        if (filterInputs.length === 0) return;
+
+        // Obtener todas las filas válidas
+        let allRows = Array.from(tbody.querySelectorAll('tr'));
+        let rows = allRows.filter(function (row) {
+            const cells = row.querySelectorAll('td');
+            const hasCells = cells.length > 0;
+            const isNoResults = row.classList.contains('no-results') ||
+                row.textContent.trim().toLowerCase().includes('no results');
+            return hasCells && !isNoResults;
+        });
 
         rows.forEach(function (row) {
             let showRow = true;
@@ -228,8 +271,9 @@
                 const cell = cells[columnIndex];
 
                 if (filterValue && cell) {
-                    const cellText = cell.textContent.trim().toLowerCase();
-                    if (!cellText.includes(filterValue)) {
+                    // Obtener texto original sin resaltado
+                    const cellText = cell.getAttribute('data-original-text') || cell.textContent.trim().toLowerCase();
+                    if (!cellText.toLowerCase().includes(filterValue)) {
                         showRow = false;
                     }
                 }
@@ -241,8 +285,11 @@
         // Re-aplicar paginación con filas filtradas
         if (table._pagination) {
             const visibleRows = rows.filter(r => r.style.display !== 'none');
-            table._pagination.getRows = () => visibleRows;
-            table._pagination.showPage(0);
+            // Actualizar paginación con filas visibles
+            if (visibleRows.length > 0) {
+                table._pagination.getRows = () => visibleRows;
+                table._pagination.showPage(0);
+            }
         }
 
         // Re-aplicar resaltado
@@ -449,7 +496,7 @@
     }
 
     /**
-     * Guardar preferencias de columnas
+     * Guardar preferencias de columnas en cookies
      */
     function saveColumnPreferences(storageKey, table) {
         const preferences = {};
@@ -464,22 +511,66 @@
         });
 
         try {
-            localStorage.setItem(storageKey, JSON.stringify(preferences));
+            const jsonData = JSON.stringify(preferences);
+            // Guardar en cookie con expiración de 365 días
+            setCookie(storageKey, jsonData, 365);
+            console.log('GlobalSearch: Column preferences saved to cookie:', storageKey);
         } catch (e) {
-            console.warn('Could not save column preferences:', e);
+            console.warn('GlobalSearch: Could not save column preferences:', e);
         }
     }
 
     /**
-     * Cargar preferencias de columnas
+     * Cargar preferencias de columnas desde cookies
      */
     function loadColumnPreferences(storageKey) {
         try {
-            const saved = localStorage.getItem(storageKey);
-            return saved ? JSON.parse(saved) : null;
-        } catch (e) {
-            console.warn('Could not load column preferences:', e);
+            const saved = getCookie(storageKey);
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                console.log('GlobalSearch: Column preferences loaded from cookie:', storageKey);
+                return parsed;
+            }
             return null;
+        } catch (e) {
+            console.warn('GlobalSearch: Could not load column preferences:', e);
+            return null;
+        }
+    }
+
+    // Mostrar loader del frontend
+    function showFrontendLoader() {
+        const resultsContainer = document.getElementById('globalsearch-results');
+        if (resultsContainer) {
+            // Crear overlay de carga si no existe
+            let loader = document.getElementById('globalsearch-frontend-loader');
+            if (!loader) {
+                loader = document.createElement('div');
+                loader.id = 'globalsearch-frontend-loader';
+                loader.className = 'position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center';
+                loader.style.cssText = 'background: rgba(255,255,255,0.8); z-index: 9999;';
+                loader.innerHTML = `
+                    <div class="text-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Processing...</span>
+                        </div>
+                        <p class="mt-3 text-muted">Processing search results...</p>
+                    </div>
+                `;
+                document.body.appendChild(loader);
+            }
+        }
+    }
+
+    // Ocultar loader del frontend
+    function hideFrontendLoader() {
+        const loader = document.getElementById('globalsearch-frontend-loader');
+        if (loader) {
+            loader.style.opacity = '0';
+            loader.style.transition = 'opacity 0.3s';
+            setTimeout(function () {
+                loader.remove();
+            }, 300);
         }
     }
 
@@ -488,25 +579,35 @@
         console.log('GlobalSearch Enhanced: Initializing...');
         console.log('GlobalSearch Enhanced: Document ready state:', document.readyState);
 
+        // Mostrar loader del frontend
+        showFrontendLoader();
+
         const tables = document.querySelectorAll('.search-results-table');
         console.log('GlobalSearch Enhanced: Found', tables.length, 'tables');
 
         if (tables.length === 0) {
             console.warn('GlobalSearch Enhanced: No tables found with class .search-results-table');
             console.log('GlobalSearch Enhanced: Available tables:', document.querySelectorAll('table').length);
+            hideFrontendLoader();
             // Intentar de nuevo después de un delay
             setTimeout(function () {
                 const retryTables = document.querySelectorAll('.search-results-table');
                 console.log('GlobalSearch Enhanced: Retry - Found', retryTables.length, 'tables');
                 if (retryTables.length > 0) {
+                    showFrontendLoader();
                     initAllTables();
+                    hideFrontendLoader();
                 }
             }, 500);
             return;
         }
 
-        initAllTables();
-        console.log('GlobalSearch Enhanced: Initialization complete');
+        // Inicializar tablas (esto puede tardar)
+        setTimeout(function () {
+            initAllTables();
+            hideFrontendLoader();
+            console.log('GlobalSearch Enhanced: Initialization complete');
+        }, 50);
     }
 
     // Esperar a que todo esté completamente cargado
