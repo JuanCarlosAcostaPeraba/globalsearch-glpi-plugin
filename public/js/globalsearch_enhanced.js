@@ -40,19 +40,16 @@
     function initAllTables() {
         try {
             const tables = document.querySelectorAll('.search-results-table');
-            console.log('GlobalSearch: Found', tables.length, 'tables to initialize');
 
             tables.forEach(function (table) {
                 try {
                     const tableId = table.getAttribute('id') || 'table-' + Math.random().toString(36).substr(2, 9);
                     table.setAttribute('id', tableId);
 
-                    console.log('GlobalSearch: Initializing table', tableId);
                     initPagination(table);
                     initFilters(table);
                     initColumnToggle(table);
                     applyHighlight(table);
-                    console.log('GlobalSearch: Table', tableId, 'initialized successfully');
                 } catch (e) {
                     console.error('GlobalSearch: Error initializing table', e);
                 }
@@ -68,13 +65,11 @@
     function initPagination(table) {
         const tbody = table.querySelector('tbody');
         if (!tbody) {
-            console.log('GlobalSearch: No tbody found for pagination');
             return;
         }
 
         // Obtener todas las filas de datos
         let allRows = Array.from(tbody.querySelectorAll('tr'));
-        console.log('GlobalSearch: Pagination - All rows found:', allRows.length);
 
         // Filtrar filas que tienen celdas y no son mensajes
         let rows = allRows.filter(function (row) {
@@ -86,10 +81,8 @@
         });
 
         const totalRows = rows.length;
-        console.log('GlobalSearch: Pagination - Valid rows:', totalRows);
 
         if (totalRows <= ITEMS_PER_PAGE) {
-            console.log('GlobalSearch: No pagination needed (rows <=', ITEMS_PER_PAGE, ')');
             return; // No necesita paginación
         }
 
@@ -99,7 +92,6 @@
         // Crear controles de paginación si no existen
         let pagination = card.querySelector('.search-pagination');
         if (!pagination) {
-            console.log('GlobalSearch: Creating pagination controls');
             const cardBody = card.querySelector('.card-body');
             pagination = document.createElement('div');
             pagination.className = 'card-footer d-flex justify-content-between align-items-center bg-light search-pagination';
@@ -115,7 +107,6 @@
                 </div>
             `;
             card.appendChild(pagination);
-            console.log('GlobalSearch: Pagination controls created');
         }
 
         const paginationInfo = pagination.querySelector('.search-pagination-info');
@@ -199,7 +190,6 @@
         // Verificar si ya existe una fila de filtros
         const existingFilterRow = thead.querySelector('.table-filters');
         if (existingFilterRow) {
-            console.log('GlobalSearch: Filters already exist for this table, skipping');
             return; // Ya existe, no crear otra
         }
 
@@ -312,17 +302,13 @@
      * Aplicar filtros a la tabla
      */
     function applyFilters(table) {
-        console.log('GlobalSearch: Applying filters to table', table.getAttribute('id'));
-        
         const tbody = table.querySelector('tbody');
         if (!tbody) {
-            console.log('GlobalSearch: No tbody found');
             return;
         }
 
         const filterInputs = table.querySelectorAll('.filter-input');
         if (filterInputs.length === 0) {
-            console.log('GlobalSearch: No filter inputs found');
             return;
         }
 
@@ -335,8 +321,6 @@
                 row.textContent.trim().toLowerCase().includes('no results');
             return hasCells && !isNoResults;
         });
-
-        console.log('GlobalSearch: Filtering', rows.length, 'rows');
 
         // Aplicar filtros
         const filteredRows = [];
@@ -365,9 +349,6 @@
                 filteredRows.push(row);
             }
         });
-
-        console.log('GlobalSearch: After filtering,', filteredRows.length, 'rows visible out of', rows.length, 'total');
-        console.log('GlobalSearch: Filtered rows:', filteredRows.map(r => r.querySelector('td')?.textContent?.substring(0, 30)));
 
         // Re-aplicar paginación con filas filtradas
         if (table._pagination) {
@@ -403,8 +384,6 @@
      * Limpiar filtros
      */
     function clearFilters(table) {
-        console.log('GlobalSearch: Clearing filters for table', table.getAttribute('id'));
-        
         const filterInputs = table.querySelectorAll('.filter-input');
         filterInputs.forEach(function (input) {
             input.value = '';
@@ -704,7 +683,6 @@
             const jsonData = JSON.stringify(preferences);
             // Guardar en cookie con expiración de 365 días
             setCookie(storageKey, jsonData, 365);
-            console.log('GlobalSearch: Column preferences saved to cookie:', storageKey);
         } catch (e) {
             console.warn('GlobalSearch: Could not save column preferences:', e);
         }
@@ -718,7 +696,6 @@
             const saved = getCookie(storageKey);
             if (saved) {
                 const parsed = JSON.parse(saved);
-                console.log('GlobalSearch: Column preferences loaded from cookie:', storageKey);
                 return parsed;
             }
             return null;
@@ -766,23 +743,16 @@
 
     // Inicializar cuando el DOM esté listo
     function initialize() {
-        console.log('GlobalSearch Enhanced: Initializing...');
-        console.log('GlobalSearch Enhanced: Document ready state:', document.readyState);
-
         // Mostrar loader del frontend
         showFrontendLoader();
 
         const tables = document.querySelectorAll('.search-results-table');
-        console.log('GlobalSearch Enhanced: Found', tables.length, 'tables');
 
         if (tables.length === 0) {
-            console.warn('GlobalSearch Enhanced: No tables found with class .search-results-table');
-            console.log('GlobalSearch Enhanced: Available tables:', document.querySelectorAll('table').length);
             hideFrontendLoader();
             // Intentar de nuevo después de un delay
             setTimeout(function () {
                 const retryTables = document.querySelectorAll('.search-results-table');
-                console.log('GlobalSearch Enhanced: Retry - Found', retryTables.length, 'tables');
                 if (retryTables.length > 0) {
                     showFrontendLoader();
                     initAllTables();
@@ -796,7 +766,6 @@
         setTimeout(function () {
             initAllTables();
             hideFrontendLoader();
-            console.log('GlobalSearch Enhanced: Initialization complete');
         }, 50);
     }
 
