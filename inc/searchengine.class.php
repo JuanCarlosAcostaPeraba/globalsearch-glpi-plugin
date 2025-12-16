@@ -200,9 +200,28 @@ class PluginGlobalsearchSearchEngine
                     'glpi_tickets.entities_id',
                     'glpi_tickets.date',
                     'glpi_tickets.closedate',
-                    'glpi_tickets.date_mod'
+                    'glpi_tickets.date_mod',
+                    'glpi_users.firstname AS tech_firstname',
+                    'glpi_users.realname AS tech_realname'
                 ],
                 'FROM'   => 'glpi_tickets',
+                'LEFT JOIN' => [
+                    'glpi_tickets_users' => [
+                        'ON' => [
+                            'glpi_tickets_users' => 'tickets_id',
+                            'glpi_tickets' => 'id'
+                        ],
+                        'AND' => [
+                            'glpi_tickets_users.type' => 2
+                        ]
+                    ],
+                    'glpi_users' => [
+                        'ON' => [
+                            'glpi_users' => 'id',
+                            'glpi_tickets_users' => 'users_id'
+                        ]
+                    ]
+                ],
                 'WHERE'  => array_merge(
                     ['glpi_tickets.id' => $this->raw_query],
                     $entity_criteria
@@ -216,7 +235,10 @@ class PluginGlobalsearchSearchEngine
                 $ticket = new Ticket();
                 if ($ticket->can($row['id'], READ)) {
                     $row['status_name'] = Ticket::getStatus($row['status']);
-                    $row['tech_name'] = $this->getTechnicianName($row['id']);
+                    $firstname = $row['tech_firstname'] ?? '';
+                    $realname  = $row['tech_realname'] ?? '';
+                    $fullname  = trim($firstname . ' ' . $realname);
+                    $row['tech_name'] = $fullname !== '' ? $fullname : __('Not assigned');
                     $results[] = $row;
                 }
             }
@@ -238,9 +260,28 @@ class PluginGlobalsearchSearchEngine
                 'glpi_tickets.entities_id',
                 'glpi_tickets.date',
                 'glpi_tickets.closedate',
-                'glpi_tickets.date_mod'
+                'glpi_tickets.date_mod',
+                'glpi_users.firstname AS tech_firstname',
+                'glpi_users.realname AS tech_realname'
             ],
             'FROM'   => 'glpi_tickets',
+            'LEFT JOIN' => [
+                'glpi_tickets_users' => [
+                    'ON' => [
+                        'glpi_tickets_users' => 'tickets_id',
+                        'glpi_tickets' => 'id'
+                    ],
+                    'AND' => [
+                        'glpi_tickets_users.type' => 2
+                    ]
+                ],
+                'glpi_users' => [
+                    'ON' => [
+                        'glpi_users' => 'id',
+                        'glpi_tickets_users' => 'users_id'
+                    ]
+                ]
+            ],
             'WHERE'  => array_merge(
                 $this->getMultiWordCriteria($search_fields),
                 $entity_criteria
@@ -257,7 +298,10 @@ class PluginGlobalsearchSearchEngine
             $ticket = new Ticket();
             if ($ticket->can($row['id'], READ)) {
                 $row['status_name'] = Ticket::getStatus($row['status']);
-                $row['tech_name'] = $this->getTechnicianName($row['id']);
+                $firstname = $row['tech_firstname'] ?? '';
+                $realname  = $row['tech_realname'] ?? '';
+                $fullname  = trim($firstname . ' ' . $realname);
+                $row['tech_name'] = $fullname !== '' ? $fullname : __('Not assigned');
                 $results[] = $row;
             }
         }
