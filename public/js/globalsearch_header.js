@@ -63,7 +63,11 @@ document.addEventListener('DOMContentLoaded', function () {
                                    autofocus />
                         </div>
                     </div>
-                    <div class="d-flex justify-content-end gap-2">
+                    <div class="d-flex justify-content-end align-items-center gap-2">
+                        <div class="me-auto d-none align-items-center gap-2 text-muted small globalsearch-modal-loader">
+                            <span class="spinner-border spinner-border-sm text-primary" role="status" aria-hidden="true"></span>
+                            <span>Buscando…</span>
+                        </div>
                         <button type="button" class="btn btn-outline-secondary globalsearch-close">
                             Cancelar
                         </button>
@@ -72,13 +76,6 @@ document.addEventListener('DOMContentLoaded', function () {
                         </button>
                     </div>
                 </form>
-
-                <div class="globalsearch-modal-loader d-none text-center mt-3">
-                    <div class="spinner-border text-primary" role="status">
-                        <span class="visually-hidden">Buscando...</span>
-                    </div>
-                    <p class="mt-2 text-muted">Buscando, por favor espera...</p>
-                </div>
             </div>
         </div>
     `;
@@ -141,48 +138,23 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
 
-    // Mostrar loader al enviar el formulario
+    // Mostrar loader al enviar el formulario (sin tocar el valor del input)
     if (form) {
-        form.addEventListener('submit', function (e) {
-            // Evitar doble envío
-            if (form.getAttribute('data-submitting') === '1') {
-                return;
-            }
-            form.setAttribute('data-submitting', '1');
-
-            // Asegurar que el valor de búsqueda se envía correctamente
-            const searchInput = form.querySelector('input[name="globalsearch"]');
-            if (searchInput) {
-                const value = searchInput.value != null ? String(searchInput.value) : '';
-
-                // Si por alguna razón el input pudiera ser deshabilitado por otros scripts,
-                // creamos un campo oculto con el mismo nombre y valor.
-                let hidden = form.querySelector('input[type="hidden"][name="globalsearch"]');
-                if (!hidden) {
-                    hidden = document.createElement('input');
-                    hidden.type = 'hidden';
-                    hidden.name = 'globalsearch';
-                    form.appendChild(hidden);
-                }
-                hidden.value = value;
-
-                // Asegurarnos de que el input visible no esté deshabilitado
-                searchInput.disabled = false;
+        form.addEventListener('submit', function () {
+            // Asegurar que solo exista un input con name="globalsearch"
+            const gsInputs = form.querySelectorAll('input[name="globalsearch"]');
+            if (gsInputs.length > 1) {
+                // Conservar el primero y eliminar el resto
+                gsInputs.forEach(function (inp, idx) {
+                    if (idx > 0) {
+                        inp.remove();
+                    }
+                });
             }
 
-            // Mostrar loader
             if (modalLoader) {
                 modalLoader.classList.remove('d-none');
             }
-
-            // Desactivar solo los botones para evitar dobles envíos,
-            // pero mantener los inputs habilitados para que se envíen sus valores
-            const buttons = form.querySelectorAll('button');
-            buttons.forEach(function (btnEl) {
-                btnEl.disabled = true;
-            });
-
-            // Mantener el submit real (no llamar preventDefault) para que GLPI navegue a la página de resultados
         });
     }
 });
