@@ -121,7 +121,7 @@
             const currentRows = table._pagination ? table._pagination.getRows() : rows;
             const currentTotalRows = currentRows.length;
             const currentTotalPages = Math.ceil(currentTotalRows / ITEMS_PER_PAGE);
-            
+
             const start = page * ITEMS_PER_PAGE;
             const end = Math.min(start + ITEMS_PER_PAGE, currentTotalRows);
 
@@ -235,27 +235,27 @@
         buttonCell.colSpan = headers.length;
         buttonCell.className = 'text-end';
         buttonCell.style.padding = '0.5rem';
-        
+
         const applyButton = document.createElement('button');
         applyButton.type = 'button';
         applyButton.className = 'btn btn-sm btn-primary filter-apply-btn';
         applyButton.innerHTML = '<i class="fas fa-filter"></i> Apply Filters';
         applyButton.setAttribute('data-table-id', table.getAttribute('id'));
-        
+
         const clearButton = document.createElement('button');
         clearButton.type = 'button';
         clearButton.className = 'btn btn-sm btn-outline-secondary filter-clear-btn ms-2';
         clearButton.innerHTML = '<i class="fas fa-times"></i> Clear';
         clearButton.setAttribute('data-table-id', table.getAttribute('id'));
-        
+
         buttonCell.appendChild(applyButton);
         buttonCell.appendChild(clearButton);
-        
+
         // Crear segunda fila para el botón
         const buttonRow = document.createElement('tr');
         buttonRow.className = 'table-filters-actions';
         buttonRow.appendChild(buttonCell);
-        
+
         thead.appendChild(filterRow);
         thead.appendChild(buttonRow);
 
@@ -263,11 +263,11 @@
         applyButton.addEventListener('click', function () {
             applyFilters(table);
         });
-        
+
         clearButton.addEventListener('click', function () {
             clearFilters(table);
         });
-        
+
         // Permitir Enter en los inputs para aplicar filtros
         const filterInputs = filterRow.querySelectorAll('.filter-input');
         filterInputs.forEach(function (input) {
@@ -285,7 +285,7 @@
      */
     function getCellText(cell) {
         if (!cell) return '';
-        
+
         // Si hay HTML original guardado, usar ese texto
         const originalHTML = cell.getAttribute('data-original-html');
         if (originalHTML) {
@@ -293,7 +293,7 @@
             tempDiv.innerHTML = originalHTML;
             return tempDiv.textContent || tempDiv.innerText || '';
         }
-        
+
         // Si no, usar textContent (que ignora HTML)
         return cell.textContent || cell.innerText || '';
     }
@@ -307,8 +307,51 @@
             return;
         }
 
-        const filterInputs = table.querySelectorAll('.filter-input');
+        const allFilterInputs = table.querySelectorAll('.filter-input');
+        if (allFilterInputs.length === 0) {
+            return;
+        }
+
+        // Solo tener en cuenta filtros activos (no vacíos y no deshabilitados / ocultos)
+        const filterInputs = Array.from(allFilterInputs).filter(function (input) {
+            if (input.disabled) return false;
+            if (!input.value || input.value.trim() === '') return false;
+
+            const cell = input.closest('td');
+            if (cell && (cell.offsetParent === null || getComputedStyle(cell).display === 'none')) {
+                // La columna está oculta, no aplicar este filtro
+                return false;
+            }
+            return true;
+        });
+
+        // Si no hay filtros activos, mostrar todas las filas y restaurar paginación
         if (filterInputs.length === 0) {
+            // Obtener todas las filas válidas
+            let allRows = Array.from(tbody.querySelectorAll('tr'));
+            let rows = allRows.filter(function (row) {
+                const cells = row.querySelectorAll('td');
+                const hasCells = cells.length > 0;
+                const isNoResults = row.classList.contains('no-results') ||
+                    row.textContent.trim().toLowerCase().includes('no results');
+                return hasCells && !isNoResults;
+            });
+
+            rows.forEach(function (row) {
+                row.style.display = '';
+            });
+
+            if (table._pagination) {
+                const card = table.closest('.card');
+                const pagination = card ? card.querySelector('.search-pagination') : null;
+                if (pagination) {
+                    pagination.style.display = '';
+                }
+                table._pagination.getRows = () => rows;
+                table._pagination.showPage(0);
+            }
+
+            applyHighlight(table);
             return;
         }
 
@@ -344,7 +387,7 @@
 
             // Guardar el estado del filtro en un atributo data
             row.setAttribute('data-filter-visible', showRow ? 'true' : 'false');
-            
+
             if (showRow) {
                 filteredRows.push(row);
             }
@@ -354,7 +397,7 @@
         if (table._pagination) {
             // Actualizar la función getRows para devolver solo las filas filtradas
             table._pagination.getRows = () => filteredRows;
-            
+
             if (filteredRows.length > 0) {
                 // Mostrar paginación si estaba oculta
                 const pagination = table.closest('.card').querySelector('.search-pagination');
@@ -648,13 +691,35 @@
         const tbody = table.querySelector('tbody');
         if (!thead || !tbody) return;
 
-        // Ocultar/mostrar header
-        const headerCells = thead.querySelectorAll('th, .table-filters td');
+        // Ocultar/mostrar header (solo los <th>)
+        const headerCells = thead.querySelectorAll('th');
         if (headerCells[columnIndex]) {
             headerCells[columnIndex].style.display = isVisible ? '' : 'none';
         }
 
-        // Ocultar/mostrar celdas
+        // Ocultar/mostrar celda de filtro correspondiente
+        const filterRow = thead.querySelector('tr.table-filters');
+        if (filterRow) {
+            const filterCells = filterRow.querySelectorAll('td');
+            const filterCell = filterCells[columnIndex];
+            if (filterCell) {
+                filterCell.style.display = isVisible ? '' : 'none';
+
+                const filterInput = filterCell.querySelector('.filter-input');
+                if (filterInput) {
+                    if (isVisible) {
+                        // Volver a habilitar filtro cuando la columna se muestra
+                        filterInput.disabled = false;
+                    } else {
+                        // Limpiar y deshabilitar filtro cuando la columna se oculta
+                        filterInput.value = '';
+                        filterInput.disabled = true;
+                    }
+                }
+            }
+        }
+
+        // Ocultar/mostrar celdas de datos
         const rows = tbody.querySelectorAll('tr');
         rows.forEach(function (row) {
             const cells = row.querySelectorAll('td');
