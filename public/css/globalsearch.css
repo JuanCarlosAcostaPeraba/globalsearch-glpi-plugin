@@ -78,26 +78,6 @@ form[action*="front/search.php"][role="search"][data-submit-once] {
     width: 100%;
 }
 
-/* En pantallas más grandes, mostrar los inputs lado a lado */
-@media (min-width: 768px) {
-    .filter-date-range {
-        flex-direction: row;
-        align-items: flex-end;
-        gap: 0.5rem;
-    }
-
-    .filter-date-label {
-        font-size: 0.7rem;
-        white-space: nowrap;
-        margin-right: 0.25rem;
-    }
-
-    .filter-date-input {
-        flex: 1;
-        min-width: 120px;
-    }
-}
-
 /* Ajustes para que los controles de fecha se vean bien en la fila de filtros */
 .table-filters td {
     vertical-align: middle;
