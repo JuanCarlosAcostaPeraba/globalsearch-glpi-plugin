@@ -263,6 +263,7 @@ class PluginGlobalsearchSearchEngine
             if ($ticket_obj->can($row['id'], READ)) {
                 $row['status_name'] = Ticket::getStatus($row['status']);
                 $row['tech_name']   = __('Not assigned'); // Valor inicial
+                $row['requester_name'] = __('Not assigned'); // Valor inicial
                 $tickets[$row['id']] = $row;
                 $ticket_ids[] = $row['id'];
             }
@@ -308,6 +309,49 @@ class PluginGlobalsearchSearchEngine
             foreach ($techs_by_ticket as $tid => $names) {
                 if (isset($tickets[$tid])) {
                     $tickets[$tid]['tech_name'] = implode(', ', $names);
+                }
+            }
+        }
+
+        // 3. CARGA MASIVA DE SOLICITANTES (BULK LOAD)
+        if (!empty($ticket_ids)) {
+            $requester_iter = $DB->request([
+                'SELECT' => [
+                    'glpi_tickets_users.tickets_id',
+                    'glpi_users.firstname',
+                    'glpi_users.realname',
+                    'glpi_users.name AS uname'
+                ],
+                'FROM'   => 'glpi_tickets_users',
+                'INNER JOIN' => [
+                    'glpi_users' => [
+                        'ON' => ['glpi_tickets_users' => 'users_id', 'glpi_users' => 'id']
+                    ]
+                ],
+                'WHERE' => [
+                    'glpi_tickets_users.tickets_id' => $ticket_ids,
+                    'glpi_tickets_users.type'       => 1 // Requester
+                ]
+            ]);
+
+            $requesters_by_ticket = [];
+            foreach ($requester_iter as $req_row) {
+                $tid = $req_row['tickets_id'];
+                $fullname = trim($req_row['firstname'] . ' ' . $req_row['realname']);
+                if (empty($fullname)) {
+                    $fullname = $req_row['uname'];
+                }
+                if (isset($requesters_by_ticket[$tid])) {
+                    $requesters_by_ticket[$tid][] = $fullname;
+                } else {
+                    $requesters_by_ticket[$tid] = [$fullname];
+                }
+            }
+
+            // Asignar nombres concatenados
+            foreach ($requesters_by_ticket as $tid => $names) {
+                if (isset($tickets[$tid])) {
+                    $tickets[$tid]['requester_name'] = implode(', ', $names);
                 }
             }
         }
@@ -371,9 +415,17 @@ class PluginGlobalsearchSearchEngine
                 'glpi_projects.plan_start_date',
                 'glpi_projects.plan_end_date',
                 'glpi_projects.date_mod',
-                'glpi_projects.date'
+                'glpi_projects.date',
+                'glpi_users.firstname AS requester_firstname',
+                'glpi_users.realname AS requester_realname',
+                'glpi_users.name AS requester_uname'
             ],
             'FROM'   => 'glpi_projects',
+            'LEFT JOIN' => [
+                'glpi_users' => [
+                    'ON' => ['glpi_projects' => 'users_id', 'glpi_users' => 'id']
+                ]
+            ],
             'WHERE'  => array_merge(
                 $where,
                 $entity_criteria
@@ -387,6 +439,9 @@ class PluginGlobalsearchSearchEngine
             // Verificar permisos adicionales
             $project = new Project();
             if ($project->can($row['id'], READ)) {
+                // Construir nombre del solicitante
+                $fullname = trim(($row['requester_firstname'] ?? '') . ' ' . ($row['requester_realname'] ?? ''));
+                $row['requester_name'] = $fullname ?: ($row['requester_uname'] ?? __('Unknown'));
                 $results[] = $row;
             }
         }
@@ -698,7 +753,10 @@ class PluginGlobalsearchSearchEngine
                 'glpi_tickettasks.date_mod',
                 'glpi_tickettasks.is_private',
                 'glpi_tickets.name AS ticket_name',
-                'glpi_tickets.entities_id'
+                'glpi_tickets.entities_id',
+                'glpi_users.firstname AS requester_firstname',
+                'glpi_users.realname AS requester_realname',
+                'glpi_users.name AS requester_uname'
             ],
             'FROM'   => 'glpi_tickettasks',
             'INNER JOIN' => [
@@ -707,11 +765,24 @@ class PluginGlobalsearchSearchEngine
                         'glpi_tickettasks' => 'tickets_id',
                         'glpi_tickets'     => 'id'
                     ]
+                ],
+                'glpi_tickets_users' => [
+                    'ON' => [
+                        'glpi_tickets' => 'id',
+                        'glpi_tickets_users' => 'tickets_id'
+                    ]
+                ],
+                'glpi_users' => [
+                    'ON' => [
+                        'glpi_tickets_users' => 'users_id',
+                        'glpi_users' => 'id'
+                    ]
                 ]
             ],
             'WHERE'  => array_merge(
                 $where_criteria,
                 [
+                    'glpi_tickets_users.type' => 1, // Requester
                     'OR' => [
                         'glpi_tickettasks.is_private' => 0,
                         'glpi_tickettasks.users_id'   => Session::getLoginUserID()
@@ -727,6 +798,9 @@ class PluginGlobalsearchSearchEngine
             // Verificar permisos: el método can() ya verifica tareas privadas y otros permisos
             $tickettask = new TicketTask();
             if ($tickettask->can($row['id'], READ)) {
+                // Construir nombre del solicitante
+                $fullname = trim(($row['requester_firstname'] ?? '') . ' ' . ($row['requester_realname'] ?? ''));
+                $row['requester_name'] = $fullname ?: ($row['requester_uname'] ?? __('Unknown'));
                 $results[] = $row;
             }
         }
@@ -790,7 +864,10 @@ class PluginGlobalsearchSearchEngine
             'glpi_projecttasks.entities_id',
             'glpi_projecttasks.date_mod',
             'glpi_projecttasks.plan_start_date',
-            'glpi_projecttasks.users_id'
+            'glpi_projecttasks.users_id',
+            'glpi_users.firstname AS requester_firstname',
+            'glpi_users.realname AS requester_realname',
+            'glpi_users.name AS requester_uname'
         ];
 
         if ($has_private_field) {
@@ -800,6 +877,11 @@ class PluginGlobalsearchSearchEngine
         $criteria = [
             'SELECT' => $select,
             'FROM'   => 'glpi_projecttasks',
+            'LEFT JOIN' => [
+                'glpi_users' => [
+                    'ON' => ['glpi_projecttasks' => 'users_id', 'glpi_users' => 'id']
+                ]
+            ],
             'WHERE'  => array_merge(
                 $where,
                 [
@@ -822,6 +904,9 @@ class PluginGlobalsearchSearchEngine
             // Verificar permisos: el método can() ya verifica tareas privadas y otros permisos
             $projecttask = new ProjectTask();
             if ($projecttask->can($row['id'], READ)) {
+                // Construir nombre del solicitante
+                $fullname = trim(($row['requester_firstname'] ?? '') . ' ' . ($row['requester_realname'] ?? ''));
+                $row['requester_name'] = $fullname ?: ($row['requester_uname'] ?? __('Unknown'));
                 $results[] = $row;
             }
         }
