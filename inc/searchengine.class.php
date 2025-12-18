@@ -8,13 +8,28 @@ class PluginGlobalsearchSearchEngine
 {
     /** @var string */
     private $raw_query;
+    /** @var bool */
+    private $id_only = false;
 
     /**
      * @param string $raw_query
      */
     public function __construct($raw_query)
     {
-        $this->raw_query = trim($raw_query);
+        $raw = trim($raw_query);
+
+        // Soporte para prefijo "#123" => modo solo ID
+        if ($raw !== '' && mb_substr($raw, 0, 1) === '#') {
+            $id = trim(mb_substr($raw, 1));
+            if (is_numeric($id)) {
+                $this->id_only   = true;
+                $this->raw_query = $id;
+                return;
+            }
+            // Si después de # no hay número, seguimos usando la query completa
+        }
+
+        $this->raw_query = $raw;
     }
 
     /**
@@ -192,10 +207,30 @@ class PluginGlobalsearchSearchEngine
 
         // Construir criterios WHERE comunes
         $where = [];
+        $search_fields = ['glpi_tickets.name', 'glpi_tickets.content'];
+
         if (is_numeric($this->raw_query)) {
-            $where = ['glpi_tickets.id' => $this->raw_query];
+            $id_criteria = ['glpi_tickets.id' => $this->raw_query];
+
+            if ($this->id_only) {
+                // Modo solo ID: no buscar en contenido
+                $where = $id_criteria;
+            } else {
+                // Combinar búsqueda por contenido y por ID (OR), similar a TicketTasks
+                $content_criteria = $this->getMultiWordCriteria($search_fields);
+
+                if (!empty($content_criteria)) {
+                    $where = [
+                        'OR' => [
+                            $content_criteria,
+                            $id_criteria
+                        ]
+                    ];
+                } else {
+                    $where = $id_criteria;
+                }
+            }
         } elseif (mb_strlen($this->raw_query) >= 3) {
-            $search_fields = ['glpi_tickets.name', 'glpi_tickets.content'];
             $where = $this->getMultiWordCriteria($search_fields);
         } else {
             return [];
@@ -294,42 +329,38 @@ class PluginGlobalsearchSearchEngine
         // Obtener restricciones de entidades usando métodos estándar de GLPI
         $entity_criteria = $this->getEntityRestrictCriteria('Project', 'glpi_projects');
 
-        if (is_numeric($this->raw_query)) {
-            $criteria = [
-                'SELECT' => [
-                    'glpi_projects.id',
-                    'glpi_projects.name',
-                    'glpi_projects.projectstates_id',
-                    'glpi_projects.entities_id',
-                    'glpi_projects.plan_start_date',
-                    'glpi_projects.plan_end_date',
-                    'glpi_projects.date_mod',
-                    'glpi_projects.date'
-                ],
-                'FROM'   => 'glpi_projects',
-                'WHERE'  => array_merge(
-                    ['glpi_projects.id' => $this->raw_query],
-                    $entity_criteria
-                )
-            ];
+        $search_fields = ['glpi_projects.name', 'glpi_projects.comment', 'glpi_projects.content'];
 
-            $iterator = $DB->request($criteria);
-            $results = [];
-            foreach ($iterator as $row) {
-                // Verificar permisos adicionales
-                $project = new Project();
-                if ($project->can($row['id'], READ)) {
-                    $results[] = $row;
+        if (is_numeric($this->raw_query)) {
+            // Criterio por ID
+            $id_criteria = ['glpi_projects.id' => $this->raw_query];
+
+            if ($this->id_only) {
+                // Modo solo ID
+                $where = $id_criteria;
+            } else {
+                // Criterio por contenido
+                $content_criteria = $this->getMultiWordCriteria($search_fields);
+
+                // Combinar ambos con OR
+                if (!empty($content_criteria)) {
+                    $where = [
+                        'OR' => [
+                            $content_criteria,
+                            $id_criteria
+                        ]
+                    ];
+                } else {
+                    $where = $id_criteria;
                 }
             }
-            return $results;
-        }
+        } else {
+            if (mb_strlen($this->raw_query) < 3) {
+                return [];
+            }
 
-        if (mb_strlen($this->raw_query) < 3) {
-            return [];
+            $where = $this->getMultiWordCriteria($search_fields);
         }
-
-        $search_fields = ['glpi_projects.name', 'glpi_projects.comment', 'glpi_projects.content'];
 
         $criteria = [
             'SELECT' => [
@@ -344,7 +375,7 @@ class PluginGlobalsearchSearchEngine
             ],
             'FROM'   => 'glpi_projects',
             'WHERE'  => array_merge(
-                $this->getMultiWordCriteria($search_fields),
+                $where,
                 $entity_criteria
             ),
             'ORDER'  => 'glpi_projects.date_mod DESC'
@@ -376,43 +407,38 @@ class PluginGlobalsearchSearchEngine
         // Obtener restricciones de entidades usando métodos estándar de GLPI
         $entity_criteria = $this->getEntityRestrictCriteria('Document', 'glpi_documents');
 
-        if (is_numeric($this->raw_query)) {
-            $criteria = [
-                'SELECT' => [
-                    'glpi_documents.id',
-                    'glpi_documents.name',
-                    'glpi_documents.filename',
-                    'glpi_documents.entities_id',
-                    'glpi_documents.date_mod',
-                    'glpi_documents.documentcategories_id'
-                ],
-                'FROM'   => 'glpi_documents',
-                'WHERE'  => array_merge(
-                    [
-                        'glpi_documents.id' => $this->raw_query,
-                        'glpi_documents.is_deleted' => 0
-                    ],
-                    $entity_criteria
-                )
-            ];
+        $search_fields = ['glpi_documents.name', 'glpi_documents.filename', 'glpi_documents.comment'];
 
-            $iterator = $DB->request($criteria);
-            $results = [];
-            foreach ($iterator as $row) {
-                // Verificar permisos adicionales
-                $document = new Document();
-                if ($document->can($row['id'], READ)) {
-                    $results[] = $row;
+        if (is_numeric($this->raw_query)) {
+            // Criterio por ID
+            $id_criteria = ['glpi_documents.id' => $this->raw_query];
+
+            if ($this->id_only) {
+                // Modo solo ID
+                $where = $id_criteria;
+            } else {
+                // Criterio por contenido
+                $content_criteria = $this->getMultiWordCriteria($search_fields);
+
+                // Combinar ambos con OR
+                if (!empty($content_criteria)) {
+                    $where = [
+                        'OR' => [
+                            $content_criteria,
+                            $id_criteria
+                        ]
+                    ];
+                } else {
+                    $where = $id_criteria;
                 }
             }
-            return $results;
-        }
+        } else {
+            if (mb_strlen($this->raw_query) < 3) {
+                return [];
+            }
 
-        if (mb_strlen($this->raw_query) < 3) {
-            return [];
+            $where = $this->getMultiWordCriteria($search_fields);
         }
-
-        $search_fields = ['glpi_documents.name', 'glpi_documents.filename', 'glpi_documents.comment'];
 
         $criteria = [
             'SELECT' => [
@@ -425,7 +451,7 @@ class PluginGlobalsearchSearchEngine
             ],
             'FROM'   => 'glpi_documents',
             'WHERE'  => array_merge(
-                $this->getMultiWordCriteria($search_fields),
+                $where,
                 [
                     'glpi_documents.is_deleted' => 0
                 ],
@@ -460,43 +486,38 @@ class PluginGlobalsearchSearchEngine
         // Obtener restricciones de entidades usando métodos estándar de GLPI
         $entity_criteria = $this->getEntityRestrictCriteria('Software', 'glpi_softwares');
 
-        if (is_numeric($this->raw_query)) {
-            $criteria = [
-                'SELECT' => [
-                    'glpi_softwares.id',
-                    'glpi_softwares.name',
-                    'glpi_softwares.entities_id',
-                    'glpi_softwares.date_mod',
-                    'glpi_softwares.manufacturers_id'
-                ],
-                'FROM'   => 'glpi_softwares',
-                'WHERE'  => array_merge(
-                    [
-                        'glpi_softwares.id' => $this->raw_query,
-                        'glpi_softwares.is_deleted' => 0,
-                        'glpi_softwares.is_template' => 0
-                    ],
-                    $entity_criteria
-                )
-            ];
+        $search_fields = ['glpi_softwares.name', 'glpi_softwares.comment'];
 
-            $iterator = $DB->request($criteria);
-            $results = [];
-            foreach ($iterator as $row) {
-                // Verificar permisos adicionales
-                $software = new Software();
-                if ($software->can($row['id'], READ)) {
-                    $results[] = $row;
+        if (is_numeric($this->raw_query)) {
+            // Criterio por ID
+            $id_criteria = ['glpi_softwares.id' => $this->raw_query];
+
+            if ($this->id_only) {
+                // Modo solo ID
+                $where = $id_criteria;
+            } else {
+                // Criterio por contenido
+                $content_criteria = $this->getMultiWordCriteria($search_fields);
+
+                // Combinar ambos con OR
+                if (!empty($content_criteria)) {
+                    $where = [
+                        'OR' => [
+                            $content_criteria,
+                            $id_criteria
+                        ]
+                    ];
+                } else {
+                    $where = $id_criteria;
                 }
             }
-            return $results;
-        }
+        } else {
+            if (mb_strlen($this->raw_query) < 3) {
+                return [];
+            }
 
-        if (mb_strlen($this->raw_query) < 3) {
-            return [];
+            $where = $this->getMultiWordCriteria($search_fields);
         }
-
-        $search_fields = ['glpi_softwares.name', 'glpi_softwares.comment'];
 
         $criteria = [
             'SELECT' => [
@@ -508,7 +529,7 @@ class PluginGlobalsearchSearchEngine
             ],
             'FROM'   => 'glpi_softwares',
             'WHERE'  => array_merge(
-                $this->getMultiWordCriteria($search_fields),
+                $where,
                 [
                     'glpi_softwares.is_deleted' => 0,
                     'glpi_softwares.is_template' => 0
@@ -544,43 +565,38 @@ class PluginGlobalsearchSearchEngine
         // Los usuarios no tienen restricciones de entidad directas como otros items
         // pero debemos verificar permisos de visualización
 
-        if (is_numeric($this->raw_query)) {
-            $criteria = [
-                'SELECT' => [
-                    'glpi_users.id',
-                    'glpi_users.name',
-                    'glpi_users.realname',
-                    'glpi_users.firstname',
-                    'glpi_users.phone',
-                    'glpi_users.mobile',
-                    'glpi_users.date_mod'
-                ],
-                'FROM'   => 'glpi_users',
-                'WHERE'  => [
-                    'glpi_users.id' => $this->raw_query,
-                    'glpi_users.is_deleted' => 0
-                ]
-            ];
+        $search_fields = ['glpi_users.name', 'glpi_users.realname', 'glpi_users.firstname', 'glpi_users.phone', 'glpi_users.mobile'];
 
-            $iterator = $DB->request($criteria);
-            $results = [];
-            foreach ($iterator as $row) {
-                // Verificar permisos adicionales
-                $user = new User();
-                if ($user->can($row['id'], READ)) {
-                    $fullname = trim(($row['firstname'] ?? '') . ' ' . ($row['realname'] ?? ''));
-                    $row['fullname'] = $fullname ?: $row['name'];
-                    $results[] = $row;
+        if (is_numeric($this->raw_query)) {
+            // Criterio por ID
+            $id_criteria = ['glpi_users.id' => $this->raw_query];
+
+            if ($this->id_only) {
+                // Modo solo ID
+                $where = $id_criteria;
+            } else {
+                // Criterio por contenido
+                $content_criteria = $this->getMultiWordCriteria($search_fields);
+
+                // Combinar ambos con OR
+                if (!empty($content_criteria)) {
+                    $where = [
+                        'OR' => [
+                            $content_criteria,
+                            $id_criteria
+                        ]
+                    ];
+                } else {
+                    $where = $id_criteria;
                 }
             }
-            return $results;
-        }
+        } else {
+            if (mb_strlen($this->raw_query) < 3) {
+                return [];
+            }
 
-        if (mb_strlen($this->raw_query) < 3) {
-            return [];
+            $where = $this->getMultiWordCriteria($search_fields);
         }
-
-        $search_fields = ['glpi_users.name', 'glpi_users.realname', 'glpi_users.firstname', 'glpi_users.phone', 'glpi_users.mobile'];
 
         $criteria = [
             'SELECT' => [
@@ -594,7 +610,7 @@ class PluginGlobalsearchSearchEngine
             ],
             'FROM'   => 'glpi_users',
             'WHERE'  => array_merge(
-                $this->getMultiWordCriteria($search_fields),
+                $where,
                 ['glpi_users.is_deleted' => 0]
             ),
             'ORDER'  => 'glpi_users.date_mod DESC'
@@ -649,16 +665,21 @@ class PluginGlobalsearchSearchEngine
                 ]
             ];
 
-            // Combinar búsqueda en contenido Y búsqueda por ID con OR
-            if (!empty($content_criteria)) {
-                $where_criteria = [
-                    'OR' => [
-                        $content_criteria,
-                        $id_criteria
-                    ]
-                ];
-            } else {
+            if ($this->id_only) {
+                // Modo solo ID: no buscar en contenido
                 $where_criteria = $id_criteria;
+            } else {
+                // Combinar búsqueda en contenido Y búsqueda por ID con OR
+                if (!empty($content_criteria)) {
+                    $where_criteria = [
+                        'OR' => [
+                            $content_criteria,
+                            $id_criteria
+                        ]
+                    ];
+                } else {
+                    $where_criteria = $id_criteria;
+                }
             }
         } else {
             $where_criteria = $content_criteria;
@@ -728,56 +749,38 @@ class PluginGlobalsearchSearchEngine
 
         $has_private_field = $DB->fieldExists('glpi_projecttasks', 'is_private');
 
+        $search_fields = ['glpi_projecttasks.name', 'glpi_projecttasks.content', 'glpi_projecttasks.comment'];
+
         if (is_numeric($this->raw_query)) {
-            $select = [
-                'glpi_projecttasks.id',
-                'glpi_projecttasks.name',
-                'glpi_projecttasks.content',
-                'glpi_projecttasks.projects_id',
-                'glpi_projecttasks.entities_id',
-                'glpi_projecttasks.date_mod',
-                'glpi_projecttasks.plan_start_date'
-            ];
+            // Criterio por ID
+            $id_criteria = ['glpi_projecttasks.id' => $this->raw_query];
 
-            if ($has_private_field) {
-                $select[] = 'glpi_projecttasks.is_private';
-            }
+            if ($this->id_only) {
+                // Modo solo ID
+                $where = $id_criteria;
+            } else {
+                // Criterio por contenido
+                $content_criteria = $this->getMultiWordCriteria($search_fields);
 
-            $criteria = [
-                'SELECT' => $select,
-                'FROM'   => 'glpi_projecttasks',
-                'WHERE'  => array_merge(
-                    [
-                        'glpi_projecttasks.id' => $this->raw_query,
-                        'glpi_projecttasks.is_template' => 0
-                    ],
-                    $entity_criteria,
-                    $has_private_field ? [
+                // Combinar ambos con OR
+                if (!empty($content_criteria)) {
+                    $where = [
                         'OR' => [
-                            'glpi_projecttasks.is_private' => 0,
-                            'glpi_projecttasks.users_id'   => Session::getLoginUserID()
+                            $content_criteria,
+                            $id_criteria
                         ]
-                    ] : []
-                )
-            ];
-
-            $iterator = $DB->request($criteria);
-            $results = [];
-            foreach ($iterator as $row) {
-                // Verificar permisos: el método can() ya verifica tareas privadas y otros permisos
-                $projecttask = new ProjectTask();
-                if ($projecttask->can($row['id'], READ)) {
-                    $results[] = $row;
+                    ];
+                } else {
+                    $where = $id_criteria;
                 }
             }
-            return $results;
-        }
+        } else {
+            if (mb_strlen($this->raw_query) < 3) {
+                return [];
+            }
 
-        if (mb_strlen($this->raw_query) < 3) {
-            return [];
+            $where = $this->getMultiWordCriteria($search_fields);
         }
-
-        $search_fields = ['glpi_projecttasks.name', 'glpi_projecttasks.content', 'glpi_projecttasks.comment'];
 
         $select = [
             'glpi_projecttasks.id',
@@ -798,7 +801,7 @@ class PluginGlobalsearchSearchEngine
             'SELECT' => $select,
             'FROM'   => 'glpi_projecttasks',
             'WHERE'  => array_merge(
-                $this->getMultiWordCriteria($search_fields),
+                $where,
                 [
                     'glpi_projecttasks.is_template' => 0
                 ],
